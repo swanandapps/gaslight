@@ -1,0 +1,55 @@
+# Tier 2 hunt targets — real, independently-built, published MCP servers.
+# One `npx|uvx <package> [args...]` line per target. `#` = comment.
+#
+# Grouped roughly by shape. Re-run of the earlier 53-server round with the
+# UPGRADED (description-aware) recognition + the new claim-integrity attack.
+# The "previously declined" group is the point of this round: tools the
+# name-only version walked past that description-matching should now reach.
+
+# --- filesystem / file-read shaped ---
+npx -y @modelcontextprotocol/server-filesystem /tmp
+npx -y @adpharm/mcp-server-filesystem-ro /tmp
+npx -y @wonderwhy-er/desktop-commander
+npx -y mcp-server-filesystem /tmp
+npx -y @cyanheads/filesystem-mcp-server
+
+# --- fetch / network shaped (SSRF surface) ---
+npx -y d33naz-mcp-fetch
+uvx mcp-server-fetch
+npx -y @kazuph/mcp-fetch
+npx -y mcp-server-fetch-typescript
+npx -y @tokenizin/mcp-npx-fetch
+
+# --- browser / automation (previously DECLINED — non-standard tool names) ---
+npx -y @agent-infra/mcp-server-browser
+npx -y @mindstone/mcp-server-browser-automation
+npx -y chrome-devtools-mcp
+npx -y @playwright/mcp
+npx -y puppeteer-mcp-server
+
+# --- code / command execution shaped ---
+npx -y @redf0x1/mcp-server-filesystem
+npx -y mcp-server-commands
+npx -y @wonderwhy-er/desktop-commander
+npx -y mcp-shell-server
+
+# --- database / SQL shaped (claim-integrity + code-exec via expanded fields) ---
+uvx mcp-server-sqlite --db-path /tmp/hunt.db
+npx -y @executeautomation/database-server
+npx -y mcp-server-mysql
+npx -y @benborla29/mcp-server-mysql
+
+# --- memory / notes / knowledge (claim-integrity: read-only / staging claims) ---
+npx -y @modelcontextprotocol/server-memory
+npx -y mcp-knowledge-graph
+npx -y @itseasy21/mcp-knowledge-graph
+
+# --- git / vcs (destructive-authz + claim-integrity) ---
+uvx mcp-server-git
+npx -y @cyanheads/git-mcp-server
+
+# --- misc real-world servers ---
+npx -y @modelcontextprotocol/server-everything
+npx -y mcp-server-time
+uvx mcp-server-time
+npx -y @modelcontextprotocol/server-sequential-thinking

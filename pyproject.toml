@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gaslight"
+version = "0.1.1"
+description = "Automated penetration testing for AI agents: point it at your agent, get a graded security report — and everything it confirms, it proves."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "Swanand Kadam" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Security",
+]
+dependencies = [
+    "mcp>=1.9.0",
+    "anthropic>=0.68.0",
+    "openai>=1.50.0",
+    "rich>=13.7.0",
+    "jinja2>=3.1.0",
+]
+
+[project.scripts]
+gaslight = "gaslight.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gaslight"]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
