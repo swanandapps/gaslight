@@ -37,9 +37,10 @@ $ gaslight -- npx -y some-mcp-server
 
 ## Quick start
 
+Run it isolated (recommended — see the warning below) with `uvx`:
+
 ```
-pip install gaslight
-gaslight -- npx -y your-mcp-server      # point it at your agent
+uvx gaslight -- npx -y your-mcp-server      # point it at your agent
 ```
 
 That's it — no API key, no config. gaslight connects like any MCP client,
@@ -178,17 +179,34 @@ one via `--env KEY=VALUE` — never production.
 
 ## Install
 
+**Run gaslight in its own isolated environment** — with `uvx` (no install) or
+`pipx`:
+
 ```
-pip install gaslight        # (pre-launch)
-gaslight --help
+uvx gaslight --help              # zero-install, isolated
+# or:  pipx install gaslight
 ```
+
+> ⚠️ **Don't `pip install gaslight` into your app's virtualenv.** gaslight
+> brings its own dependencies (including the MCP SDK), and installing it
+> alongside your agent can change your app's dependency versions and break it.
+> gaslight runs your agent as a *separate* process, so it never needs to share
+> your venv — keep it isolated.
 
 Point it at any stdio MCP server:
 
 ```
-gaslight -- npx -y some-mcp-server
-gaslight --url https://my-agent.example/mcp     # remote (HTTP+SSE)
-gaslight --json -- python my_server.py          # machine-readable, for CI
+uvx gaslight -- npx -y some-mcp-server
+uvx gaslight --url https://my-agent.example/mcp        # remote (HTTP+SSE)
+uvx gaslight --json -- python my_server.py             # machine-readable, for CI
+```
+
+If your agent runs from a project virtualenv (absolute imports, a `-m` module,
+etc.), point the launch command at **that** venv's Python so the agent keeps its
+own dependencies, e.g. from the project root:
+
+```
+uvx gaslight -- .venv/bin/python -m your_pkg.server
 ```
 
 ## Use it from an AI agent (or CI)

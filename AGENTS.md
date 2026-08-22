@@ -12,8 +12,7 @@ report. Every finding it marks CONFIRMED is physically proven — never a guess.
 ## TL;DR
 
 ```
-pip install gaslight
-gaslight --json -- <command that launches the MCP server>
+uvx gaslight --json -- <command that launches the MCP server>
 ```
 
 Parse the JSON on stdout. `grade` is A–F. `findings[]` with `fired: true` are
@@ -27,7 +26,7 @@ real. Exit code `1` means at least one CONFIRMED issue, `0` means clean.
 
 ## How to run it
 
-**Install:** `pip install gaslight` (or run without installing: `uvx gaslight`).
+**Install:** run it **isolated** — `uvx gaslight` (no install) or `pipx install gaslight`. **Do NOT `pip install gaslight` into the user's app virtualenv** — it can change the app's dependencies (e.g. the MCP SDK version) and break the app. gaslight runs the target as a separate process, so it never needs to share the app's venv. If the agent runs from a project venv, point the launch command at that venv's Python (e.g. `.venv/bin/python -m pkg.server`) so the agent keeps its own dependencies.
 
 **Point it at a target:**
 ```
