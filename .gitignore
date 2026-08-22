@@ -12,8 +12,6 @@ build/
 .env
 .env.*
 logs/
-# Internal-only docs — kept local, never shipped or made public
-SYSTEM_DESIGN.md
-# Local hunt-result artifacts — contain real local paths and leaked findings
-# from real third-party servers. Never commit.
-harness/hunt_results*.json
+# Local tooling scratch
+.claude/
+.playwright-mcp/
