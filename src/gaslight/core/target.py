@@ -23,6 +23,42 @@ from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 
+
+def _ensure_both_cases(obj: object, snake: str, camel: str, default: object = None) -> None:
+    """Guarantee `obj` exposes BOTH the snake_case and camelCase spellings of a
+    field, copying from whichever exists. Uses object.__setattr__ to bypass
+    pydantic's field guard — this is read-only convenience state, not a
+    validated field."""
+    val = getattr(obj, snake, None)
+    if val is None:
+        val = getattr(obj, camel, None)
+    if val is None:
+        val = default
+    for name in (snake, camel):
+        if getattr(obj, name, None) is None:
+            try:
+                object.__setattr__(obj, name, val)
+            except Exception:
+                pass
+
+
+def _normalize_tools(tools: list[types.Tool]) -> list[types.Tool]:
+    """MCP SDK versions differ in casing: older releases expose
+    `input_schema` / `destructive_hint`, newer ones `inputSchema` /
+    `destructiveHint`. gaslight reads the snake_case names throughout, so
+    normalize each tool once here — the single point where tools enter — so
+    every downstream reader works regardless of which SDK version happens to be
+    installed in the target's environment. (Found in the wild: scanning a real
+    agent whose venv carried a newer MCP than gaslight was built against crashed
+    on `tool.input_schema`.)"""
+    for tool in tools:
+        _ensure_both_cases(tool, "input_schema", "inputSchema", default={})
+        annotations = getattr(tool, "annotations", None)
+        if annotations is not None:
+            _ensure_both_cases(annotations, "destructive_hint", "destructiveHint")
+            _ensure_both_cases(annotations, "read_only_hint", "readOnlyHint")
+    return tools
+
 _DEFAULT_CALL_TIMEOUT = 60.0
 """Seconds to wait for a single tool call before abandoning it. Generous on
 purpose — real tools are sometimes genuinely slow (a browser navigating, a
@@ -288,7 +324,7 @@ class TargetConnection:
             # doesn't implement the capability at all.
             resources = []
 
-        return Target(session=session, tools=listed.tools, spec=self._spec, resources=resources)
+        return Target(session=session, tools=_normalize_tools(listed.tools), spec=self._spec, resources=resources)
 
     async def _close_quietly(self, exc: BaseException) -> None:
         """Unwind whatever part of the connection did open, swallowing the
