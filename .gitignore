@@ -15,3 +15,5 @@ logs/
 # Local tooling scratch
 .claude/
 .playwright-mcp/
+# Per-project scan config written by the setup wizard
+.gaslight.json

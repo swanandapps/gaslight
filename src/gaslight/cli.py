@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -57,6 +58,54 @@ from gaslight.core.reporter import print_terminal, write_html_report
 from gaslight.core.surface import WARN, SurfaceFinding, scan_surface
 from gaslight.core.baseline import diff_baseline, load_baseline, write_baseline
 from gaslight.core.education import CLEAN_LINE, FIX_HINT, OPENING, SAFE_INTRO, fact_for, what_it_checks
+from gaslight.core.wizard import load_config, run_wizard, save_config
+
+
+def _running_in_targets_env(command) -> bool:
+    """True when gaslight appears to be launching the target with the SAME Python
+    interpreter gaslight itself is running under — the tell-tale of a
+    `pip install gaslight` INTO the app's own venv, which can change the app's
+    dependencies. gaslight should run isolated (uvx/pipx); the target is a
+    separate process. Only meaningful for a python-launched stdio target."""
+    if not command:
+        return False
+    exe = command[0]
+    base = os.path.basename(exe).lower()
+    if "python" not in base:
+        return False
+    resolved = shutil.which(exe) or exe
+    try:
+        return os.path.realpath(resolved) == os.path.realpath(sys.executable)
+    except OSError:
+        return False
+
+
+def _resolve_target_without_args(env, llm, console):
+    """Resolve a target when neither --command nor --url was given: a saved
+    .gaslight.json first, then the interactive setup wizard (only in a real
+    terminal). Returns (TargetSpec | None, llm). None means "give up, show the
+    plain error" — the correct behavior for CI / non-interactive use."""
+    cwd = Path.cwd()
+    cfg = load_config(cwd)
+    if cfg and (cfg.get("command") or cfg.get("url")):
+        cfg_llm = llm if llm is not None else cfg.get("llm")
+        console.print("[dim]Using target from .gaslight.json[/]")
+        if cfg.get("url"):
+            return TargetSpec(url=cfg["url"]), cfg_llm
+        return TargetSpec(command=list(cfg["command"]), env=env or None), cfg_llm
+
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        from rich.prompt import Confirm, Prompt
+
+        settings = run_wizard(console, prompt_ask=Prompt.ask, confirm_ask=Confirm.ask)
+        merged_env = {**env, **(settings.get("env") or {})}
+        chosen_llm = llm if llm is not None else settings.get("llm")
+        if settings.get("save"):
+            saved = save_config(cwd, {"command": settings["command"], "llm": settings["llm"]})
+            console.print(f"[dim]Saved to {saved.name} — next time just run `gaslight`.[/]")
+        return TargetSpec(command=settings["command"], env=merged_env or None), chosen_llm
+
+    return None, llm
 from gaslight.core.scorer import grade
 from gaslight.core.sink import Sink
 from gaslight.core.attacks.base import Finding
@@ -360,8 +409,24 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     elif args.command:
         spec = TargetSpec(command=args.command, env=env or None)
     else:
-        console.print("[red]error:[/] provide a command to spawn (stdio) or --url (HTTP)")
-        return 2
+        # No target given. Try a saved .gaslight.json, then (if interactive) the
+        # setup wizard, then fall back to the plain error for CI/non-tty.
+        spec, args.llm = _resolve_target_without_args(env, args.llm, console)
+        if spec is None:
+            console.print(
+                "[red]error:[/] no target given. Run [bold]gaslight -- <command>[/] (e.g. "
+                "`gaslight -- npx -y some-mcp-server`) or `gaslight --url <url>`."
+            )
+            return 2
+
+    # Safety: warn if gaslight is running from the target's own environment (the
+    # sign it was installed into the app's venv). It should run isolated.
+    if spec.command and _running_in_targets_env(spec.command):
+        console.print(
+            "[yellow]⚠  gaslight looks like it's running from your agent's own environment[/] — "
+            "installing it there can change your app's dependencies. Run it isolated instead: "
+            "[bold]uvx gaslight …[/] (see the README)."
+        )
 
     try:
         provider = detect_provider(args.llm)

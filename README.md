@@ -43,6 +43,11 @@ Run it isolated (recommended — see the warning below) with `uvx`:
 uvx gaslight -- npx -y your-mcp-server      # point it at your agent
 ```
 
+New to it? Just run **`uvx gaslight`** with no target for **guided setup** — it
+asks how your agent starts, whether it needs a test backend, and about the
+optional LLM, then remembers your answers in `.gaslight.json` so next time it's
+one command.
+
 That's it — no API key, no config. gaslight connects like any MCP client,
 attacks the tools it finds, prints a graded report to your terminal, and writes
 a shareable HTML report next to it. Add `--json` for machine-readable output, or
