@@ -33,7 +33,26 @@ from gaslight.core.attacks.confused_deputy import ConfusedDeputyAttack
 from gaslight.core.attacks.error_disclosure import ErrorDisclosureAttack
 from gaslight.core.llm_secret_hints import suggest_possible_secrets
 from gaslight.core.llm import NoProviderAvailable, detect_provider, llm_is_active
-from gaslight.core.metrics import compute_metrics
+from gaslight.core.metrics import METRICS, compute_metrics
+
+# The five layers a run is grouped into for display — the same order as the
+# report's gauges. Each attack maps to exactly one (built from METRICS), so the
+# live run reads like the report: Network → Filesystem → Leakage → Authorization
+# → Integrity.
+_PHASE_ORDER = [m.name for m in METRICS]
+_ATTACK_PHASE = {a.attack_key: m.name for m in METRICS for a in m.audits}
+
+
+def _group_by_phase(attacks):
+    """Order attacks into the five display phases, preserving order within each.
+    Returns [(phase_name, [attacks]), …] for phases that have any attack."""
+    buckets: dict[str, list] = {name: [] for name in _PHASE_ORDER}
+    for attack in attacks:
+        buckets.setdefault(_ATTACK_PHASE.get(attack.key, "Other"), []).append(attack)
+    ordered = [(name, buckets[name]) for name in _PHASE_ORDER if buckets.get(name)]
+    if buckets.get("Other"):
+        ordered.append(("Other", buckets["Other"]))
+    return ordered
 from gaslight.core.reporter import print_terminal, write_html_report
 from gaslight.core.surface import WARN, SurfaceFinding, scan_surface
 from gaslight.core.baseline import diff_baseline, load_baseline, write_baseline
@@ -288,6 +307,7 @@ def _downgrade_if_backend_was_down(finding, target) -> None:
     if finding.fired or not finding.attempted or target.backend_failures == 0:
         return
     finding.attempted = False
+    finding.reason = "not tested — the target's backend was unreachable, so probes couldn't reach the tool."
     finding.reason = (
         f"not tested — the target's own backend was unreachable "
         f"({target.backend_failures} call(s) failed to connect or authenticate), so this "
@@ -349,21 +369,13 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
         console.print(f"[red]error:[/] {exc}")
         return 2
 
-    # Transparency: say plainly whether the optional LLM layer is on, and where
-    # its boundary is. The deterministic core runs identically either way.
+    # One short, plain line about the optional LLM layer — off by default, one
+    # flag to turn on. (It never decides a verdict; see docs/AGENTS.md.)
     llm_active = llm_is_active(provider)
     if llm_active:
-        console.print(
-            f"[green]🧠  LLM layer on[/] ({provider.name}) — drives the victim-agent tests and can "
-            "help read ambiguous leaks. It never decides a verdict: every CONFIRMED still comes from "
-            "a canary physically reaching our sink."
-        )
+        console.print(f"[green]🧠  LLM on[/] ({provider.name}) — richer report; it never decides a verdict.")
     else:
-        console.print(
-            "[dim]🧠  LLM layer off — deterministic core only (no model needed, nothing leaves your "
-            "machine). All attacks still run. For a richer report, set ANTHROPIC_API_KEY / "
-            "OPENAI_API_KEY, or use --llm ollama (free, local).[/]"
-        )
+        console.print("[dim]🧠  LLM off — deterministic core. Want richer output? add `--llm ollama` (free, local).[/]")
 
     skip = {k.strip() for k in args.skip.split(",") if k.strip()}
     attacks = _build_attacks(safe=args.safe, skip=skip)
@@ -447,53 +459,70 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     with Sink() as sink:
         findings = []
         backend_down = False
-        for i, attack in enumerate(attacks):
-            what = what_it_checks(attack.key)
-            banner = f"[cyan]🧪  {attack.name}[/]"
-            console.print(f"{banner} — [dim]{what}[/]" if what else banner)
-            # Sprinkle a true, plain-language fact through the slow beats — gives
-            # the tool a voice and teaches while the subprocess spins up.
-            if i > 0 and i % 4 == 0:
-                console.print(f"   [yellow]💡 {fact_for(i)}[/]")
-            try:
-                async with TargetConnection(spec) as target:
-                    finding = await attack.run(target, provider, sink)
-                    _downgrade_if_backend_was_down(finding, target)
-                    backend_down = backend_down or target.backend_failures > 0
-            except TargetUnreachable as exc:
-                # The target started for discovery but not this time (flaky
-                # boot, a crash left behind by an earlier attack). Record it
-                # as untested rather than losing the whole run.
-                finding = Finding(
-                    attack_key=attack.key,
-                    fired=False,
-                    reason=f"could not connect to the target for this attack — {exc}",
-                    attempted=False,
-                )
-            except Exception as exc:
-                # Any other failure in one attack — most likely the optional LLM
-                # provider being unreachable (a down `--llm ollama`, an API blip,
-                # a rate limit) inside a model-driven attack — must degrade THAT
-                # attack to not-tested, never abort the run and discard the
-                # deterministic findings already collected. Printed, not
-                # swallowed, so a real bug is still visible.
-                console.print(
-                    f"[yellow]⚠  {attack.name} could not run this attack[/] "
-                    f"([dim]{type(exc).__name__}: {escape(str(exc))[:160]}[/]) — recorded as not tested."
-                )
-                finding = Finding(
-                    attack_key=attack.key,
-                    fired=False,
-                    reason=f"attack could not run ({type(exc).__name__}: {exc}) — recorded as not tested.",
-                    attempted=False,
-                )
-            findings.append(finding)
+        phases = _group_by_phase(attacks)
+        fact_i = 0
+        for pnum, (phase, phase_attacks) in enumerate(phases, 1):
+            console.print(f"\n[bold]Phase {pnum}/{len(phases)} · {phase}[/]  [dim]{'─' * 24}[/]")
+            for attack in phase_attacks:
+                what = what_it_checks(attack.key)
+                banner = f"[cyan]🧪  {attack.name}[/]"
+                console.print(f"{banner} — [dim]{what}[/]" if what else banner)
+                # Sprinkle a true, plain-language fact through the slow beats.
+                fact_i += 1
+                if fact_i % 4 == 0:
+                    console.print(f"   [yellow]💡 {fact_for(fact_i)}[/]")
+                try:
+                    async with TargetConnection(spec) as target:
+                        finding = await attack.run(target, provider, sink)
+                        _downgrade_if_backend_was_down(finding, target)
+                        backend_down = backend_down or target.backend_failures > 0
+                except TargetUnreachable as exc:
+                    # The target started for discovery but not this time (flaky
+                    # boot, a crash left behind by an earlier attack). Record it
+                    # as untested rather than losing the whole run.
+                    finding = Finding(
+                        attack_key=attack.key,
+                        fired=False,
+                        reason=f"not tested — could not connect to the target for this attack ({exc}).",
+                        attempted=False,
+                    )
+                except Exception as exc:
+                    # Any other failure in one attack — most likely the optional
+                    # LLM provider being unreachable (a down `--llm ollama`, an
+                    # API blip) inside a model-driven attack — must degrade THAT
+                    # attack to not-tested, never abort the run. Printed, not
+                    # swallowed, so a real bug is still visible.
+                    console.print(
+                        f"[yellow]⚠  {attack.name} could not run[/] "
+                        f"([dim]{type(exc).__name__}: {escape(str(exc))[:120]}[/]) — recorded as not tested."
+                    )
+                    finding = Finding(
+                        attack_key=attack.key,
+                        fired=False,
+                        reason=f"not tested — attack could not run ({type(exc).__name__}: {exc}).",
+                        attempted=False,
+                    )
+                findings.append(finding)
 
-    if backend_down:
+    # Coverage, made visible: what ran, what didn't, why, and how to fix it.
+    tested = [f for f in findings if f.attempted]
+    skipped = [f for f in findings if not f.attempted]
+    backend_skips = [f for f in skipped if "backend" in f.reason.lower() or "could not connect" in f.reason.lower()]
+    notool_skips = [f for f in skipped if f not in backend_skips]
+    console.print()
+    coverage = f"[bold]Coverage:[/] tested {len(tested)} of {len(findings)} checks."
+    if skipped:
+        reasons = []
+        if notool_skips:
+            reasons.append(f"{len(notool_skips)} need a tool this agent doesn't have")
+        if backend_skips:
+            reasons.append(f"{len(backend_skips)} couldn't run — the agent's backend was unreachable")
+        coverage += f" [dim]{len(skipped)} not tested: {' · '.join(reasons)}.[/]"
+    console.print(coverage)
+    if backend_skips:
         console.print(
-            "\n[yellow]⚠ The target's own backend was unreachable during this run[/] — "
-            "checks that needed a working tool are reported as [bold]not tested[/], not as passed. "
-            "Point it at a throwaway/test backend to get the full result."
+            "[yellow]→ For a full report, start your agent with a test backend and pass throwaway "
+            "credentials via [bold]--env KEY=VALUE[/] (never production values).[/]"
         )
 
     ai_hints: list[str] = []
