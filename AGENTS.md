@@ -121,6 +121,30 @@ Every CONFIRMED is backed by physical proof. So:
 The optional LLM layer only makes probes smarter and explains results. It can
 **never** decide whether an attack succeeded.
 
+## Setting up a target that needs a backend (for full coverage)
+
+Many agents' tools only work with a live backend (a database, an API). Without
+one, those tools error and gaslight honestly reports them "not tested" — partial
+coverage. If you're asked for a *full* scan, wire up a **test** backend first.
+You have the project context to do this; gaslight can't and won't guess it.
+
+1. **Find how the agent connects** — look for `DATABASE_URL` / API keys in
+   `.env`, `.env.example`, `docker-compose.yml`, or the project's config/settings.
+2. **Provide a THROWAWAY/TEST backend — never production.** Options:
+   - Point at a local/test database the project already uses for testing.
+   - Spin up a disposable one (e.g. `docker compose up` a local db service, or a
+     temporary Postgres/SQLite) and let the app run its migrations if it does so.
+   - ⚠️ Do NOT reuse a production `DATABASE_URL` you find in `.env` — gaslight
+     sends real payloads (including a SQL probe). If you're unsure whether a
+     connection is production, ask the user before using it.
+3. **Pass it via `--env`** (throwaway values only), launching from the repo root
+   with the app's own venv Python:
+   ```
+   uvx gaslight -- .venv/bin/python -m pkg.server --env DATABASE_URL=postgresql://localhost/app_test
+   ```
+4. **Re-run and check the Coverage line** — the "couldn't run — backend
+   unreachable" count should drop as the tools come alive.
+
 ## If the user asks you to fix the findings
 
 This is the main loop: gaslight finds and proves the issue, and **you fix it.**
