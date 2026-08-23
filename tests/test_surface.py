@@ -220,6 +220,26 @@ async def test_a_crashing_attack_does_not_abort_the_whole_run(tmp_path, monkeypa
     assert exit_code == 0  # completed and reported, did not crash on the outage
 
 
+async def test_missing_llm_key_degrades_instead_of_aborting(tmp_path, monkeypatch):
+    # The LLM layer is optional — choosing a provider with no key must degrade to
+    # the deterministic core, never abort a scan after the agent was discovered.
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    args = argparse.Namespace(
+        command=[sys.executable, str(_FIXTURES / "vulnerable_server.py")],
+        url=None,
+        llm="openai",  # requested, but no key present
+        safe=True,
+        classify_secrets=False,
+        output=str(tmp_path / "r.html"),
+        json=False,
+        skip="",
+        max_turns=6,
+    )
+    exit_code = await _run(args, Console())
+    assert exit_code in (0, 1)  # it ran (deterministic core), did not return 2
+
+
 # --- secret-in-metadata ---
 
 

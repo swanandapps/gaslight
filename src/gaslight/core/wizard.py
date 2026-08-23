@@ -12,6 +12,7 @@ credentials), so the next run is just `gaslight`.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 from pathlib import Path
 
@@ -138,7 +139,19 @@ def run_wizard(console, *, prompt_ask, confirm_ask, cwd: Path | None = None, for
         "\n[dim]An optional LLM makes probes smarter and explains findings in plain English. "
         "It never decides a verdict — every CONFIRMED still comes from physical proof.[/]"
     )
-    choice = prompt_ask("LLM layer", choices=["off", "ollama", "anthropic", "openai"], default="off")
+    # Only offer providers that will actually work — a key-less anthropic/openai
+    # choice would just fail later. off and ollama (local) are always available.
+    choices = ["off", "ollama"]
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        choices.append("anthropic")
+    if os.environ.get("OPENAI_API_KEY"):
+        choices.append("openai")
+    if "openai" not in choices and "anthropic" not in choices:
+        console.print(
+            "[dim](No hosted key found. Set OPENAI_API_KEY or ANTHROPIC_API_KEY before running to enable "
+            "a hosted model, or use 'ollama' — free and local.)[/]"
+        )
+    choice = prompt_ask("LLM layer", choices=choices, default="off")
     # "off" -> force the deterministic core, so a stray API key in the env
     # doesn't silently turn the layer on.
     llm = "scripted" if choice == "off" else choice

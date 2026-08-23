@@ -33,7 +33,7 @@ from gaslight.core.attacks.denial_of_wallet import DenialOfWalletAttack
 from gaslight.core.attacks.confused_deputy import ConfusedDeputyAttack
 from gaslight.core.attacks.error_disclosure import ErrorDisclosureAttack
 from gaslight.core.llm_secret_hints import suggest_possible_secrets
-from gaslight.core.llm import NoProviderAvailable, detect_provider, llm_is_active
+from gaslight.core.llm import NoProviderAvailable, ScriptedProvider, detect_provider, llm_is_active
 from gaslight.core.metrics import METRICS, compute_metrics
 
 # The five layers a run is grouped into for display — the same order as the
@@ -152,6 +152,8 @@ def _load_dotenv(path: Path) -> None:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
+        if line.startswith("export "):  # common in shell-style .env files
+            line = line[len("export ") :]
         key, _, value = line.partition("=")
         os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
 
@@ -500,12 +502,17 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
             return 2
 
     # The optional LLM layer, resolved after discovery (it isn't needed to
-    # connect). One short line; off by default.
+    # connect). If the chosen provider has no key, DEGRADE to the deterministic
+    # core rather than aborting — the LLM is enrichment, it must never block a
+    # scan (found in the wild: a run died after discovering the agent because a
+    # wizard-chosen provider had no key).
     try:
         provider = detect_provider(args.llm)
     except NoProviderAvailable as exc:
-        console.print(f"[red]error:[/] {exc}")
-        return 2
+        console.print(
+            f"[yellow]⚠  {exc}[/]\n[dim]Running the deterministic core instead — the LLM layer is optional.[/]"
+        )
+        provider = ScriptedProvider()
     llm_active = llm_is_active(provider)
     if llm_active:
         console.print(f"[green]🧠  LLM on[/] ({provider.name}) — richer report; it never decides a verdict.")
