@@ -43,33 +43,53 @@ def save_config(cwd: Path, settings: dict) -> Path:
     return path
 
 
-def _choose_target(console, prompter, cwd: Path):
-    """Return (command:list|None, url:str|None) via a select menu of detected
-    targets + a custom option."""
-    targets = discover_targets(cwd)
-    if targets:
-        options = []
-        for t in targets:
-            desc = t.get("url") or " ".join(t.get("command", []))
-            label = desc + ("   (best guess)" if t.get("guess") else "")
-            options.append({"name": label, "value": t})
-        options.append({"name": "Custom — enter the command myself", "value": "custom"})
-        chosen = prompter.select("How does your agent start?", options)
-    else:
-        console.print("[dim]Couldn't auto-detect how your agent starts.[/]")
-        chosen = "custom"
+_CMD_HINT = "Launch command  (e.g.  npx -y some-mcp-server   or   .venv/bin/python -m pkg.server)"
 
-    if chosen == "custom":
-        cmd = prompter.text(
-            "Launch command  (e.g.  npx -y some-mcp-server   or   .venv/bin/python -m pkg.server)"
+
+def _describe(target: dict) -> str:
+    return target.get("url") or " ".join(target.get("command", []))
+
+
+def _target_to_cmd(target: dict):
+    if target.get("url"):
+        return None, target["url"]
+    return list(target.get("command") or []), None
+
+
+def _choose_target(console, prompter, cwd: Path):
+    """Return (command:list|None, url:str|None).
+
+    Presents the auto-detected target as a *statement* ("here's how it starts")
+    set apart with spacing, then asks a *separate* highlighted question ("start
+    it this way?"). Keeping the finding and the question visually distinct is the
+    whole point — that separation was what the old flat menu was missing."""
+    targets = discover_targets(cwd)
+    if not targets:
+        console.print("[dim]Couldn't auto-detect how your agent starts — enter its command below.[/]\n")
+        return shlex.split(prompter.text(_CMD_HINT)), None
+
+    primary = targets[0]
+    source = primary.get("source", "your project")
+    qualifier = "  [dim](best guess)[/]" if primary.get("guess") else ""
+    console.print(f"[green]✓  Found your agent[/]{qualifier}")
+    console.print(f"[dim]   Detected in {source} — this is how it starts:[/]\n")
+    console.print(f"       [bold cyan]{_describe(primary)}[/]\n")
+
+    options = [{"name": "Yes, use this", "value": "use"}]
+    if len(targets) > 1:
+        options.append({"name": f"Pick a different one  ({len(targets) - 1} more found)", "value": "other"})
+    options.append({"name": "I'll type the command myself", "value": "custom"})
+
+    choice = prompter.select("Start it this way?", options)
+    if choice == "use":
+        return _target_to_cmd(primary)
+    if choice == "other":
+        picked = prompter.select(
+            "Which one?",
+            [{"name": _describe(t) + ("  (best guess)" if t.get("guess") else ""), "value": t} for t in targets[1:]],
         )
-        return shlex.split(cmd), None
-    if chosen.get("url"):
-        return None, chosen["url"]
-    command = chosen.get("command") or []
-    if chosen.get("guess"):
-        command = shlex.split(prompter.text("Confirm or edit the command", default=" ".join(command)))
-    return command, None
+        return _target_to_cmd(picked)
+    return shlex.split(prompter.text(_CMD_HINT)), None
 
 
 def _resolve_llm(provider: str, prompter, console) -> str:
@@ -100,10 +120,16 @@ def run_wizard(console, prompter, *, cwd: Path | None = None, force_configure: b
     if it can't start, the caller re-enters with force_configure=True. **Configure**
     walks through a test backend and the LLM."""
     cwd = cwd or Path.cwd()
-    console.print("\n[bold]gaslight setup[/] — point it at your agent, get a graded security report.\n")
+    # Welcome: one bold line + one sentence, no bordered box (council: Jobs/PG —
+    # you installed it, you know what it is; separation comes from whitespace).
+    console.print()
+    console.print("[bold]gaslight[/] — automated penetration testing for AI agents.")
+    console.print("[dim]Safe, controlled attacks on your agent, graded, with a report your AI can fix from.[/]")
+    console.print()
 
     # 1. Target
     command, url = _choose_target(console, prompter, cwd)
+    console.print()
 
     # 2. Quick vs Configure — each option says exactly what it does (no hidden LLM).
     if not force_configure:
@@ -118,6 +144,7 @@ def run_wizard(console, prompter, *, cwd: Path | None = None, force_configure: b
             return {"mode": "auto", "command": command, "url": url, "env": {}, "llm": "scripted", "save": False}
 
     # 3. Test backend
+    console.print()
     env: dict[str, str] = {}
     if prompter.select(
         "Do your agent's tools need a backend to run (a database, an API)?",
@@ -135,14 +162,18 @@ def run_wizard(console, prompter, *, cwd: Path | None = None, force_configure: b
                 key, value = pair.split("=", 1)
                 env[key.strip()] = value.strip()
 
-    # 4. Optional LLM layer
+    # 4. Optional LLM layer — say what you GET, in a word each. It never decides
+    # a verdict; the deterministic core stands alone.
+    console.print()
+    console.print("[dim]An optional AI layer makes probes smarter and writes findings in plain English.[/]")
+    console.print("[dim]It never decides a verdict — the deterministic checks do that.[/]")
     provider = prompter.select(
-        "Optional LLM layer  (smarter probes + plain-English findings; it never decides a verdict)",
+        "Add an AI layer?",
         [
-            {"name": "Off        —  deterministic checks only (recommended)", "value": "off"},
-            {"name": "Ollama     —  free, local, private", "value": "ollama"},
-            {"name": "OpenAI     —  needs an API key", "value": "openai"},
-            {"name": "Anthropic  —  needs an API key", "value": "anthropic"},
+            {"name": "No — deterministic checks only   (fast · free · private)", "value": "off"},
+            {"name": "Ollama                           (free · local · nothing leaves your machine)", "value": "ollama"},
+            {"name": "OpenAI                           (needs an API key)", "value": "openai"},
+            {"name": "Anthropic                        (needs an API key)", "value": "anthropic"},
         ],
     )
     llm = _resolve_llm(provider, prompter, console)

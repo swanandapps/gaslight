@@ -68,19 +68,29 @@ def test_load_config_bad_json_returns_none(tmp_path):
 
 
 def test_wizard_quick_scan_with_detected_target(tmp_path):
-    # a project .mcp.json → detected target selected, Quick scan returns the
-    # command immediately with the deterministic core, no further prompts.
+    # a project .mcp.json → target shown as a statement, "Start it this way?"→Yes,
+    # then Quick scan returns the command immediately, no further prompts.
     (tmp_path / ".mcp.json").write_text('{"mcpServers": {"srv": {"command": "npx", "args": ["-y", "pkg"]}}}')
-    target = {"name": "srv", "command": ["npx", "-y", "pkg"], "source": ".mcp.json"}
     out = run_wizard(
         _Console(),
-        StubPrompter(selects=[target, "quick"]),  # pick detected target · Quick scan
+        StubPrompter(selects=["use", "quick"]),  # start it this way? yes · Quick scan
         cwd=tmp_path,
     )
     assert out["mode"] == "auto"
     assert out["command"] == ["npx", "-y", "pkg"]
     assert out["llm"] == "scripted"
     assert out["save"] is False
+
+
+def test_wizard_type_myself_overrides_detection(tmp_path):
+    # Even with a detected target, "I'll type the command myself" wins.
+    (tmp_path / ".mcp.json").write_text('{"mcpServers": {"srv": {"command": "npx", "args": ["-y", "pkg"]}}}')
+    out = run_wizard(
+        _Console(),
+        StubPrompter(selects=["custom", "quick"], texts=["python -m mine"]),
+        cwd=tmp_path,
+    )
+    assert out["command"] == ["python", "-m", "mine"]
 
 
 def test_wizard_custom_command_no_backend(tmp_path):
@@ -160,7 +170,7 @@ def test_wizard_force_configure_skips_run_mode_choice(tmp_path):
     target = {"name": "srv", "command": ["npx", "-y", "pkg"], "source": ".mcp.json"}
     out = run_wizard(
         _Console(),
-        StubPrompter(selects=[target, False, "off"], confirms=[True]),  # target · backend? no · llm off · save
+        StubPrompter(selects=["use", False, "off"], confirms=[True]),  # use target · backend? no · llm off · save
         cwd=tmp_path,
         force_configure=True,
     )
@@ -168,19 +178,17 @@ def test_wizard_force_configure_skips_run_mode_choice(tmp_path):
     assert out["command"] == ["npx", "-y", "pkg"]
 
 
-def test_wizard_confirms_a_best_guess_command(tmp_path):
-    # A best-guess target is offered for confirm/edit via a text prompt.
+def test_wizard_use_detected_best_guess(tmp_path):
+    # A best-guess target: shown as a statement, "Yes, use this" takes it as-is
+    # (no separate confirm/edit step anymore).
     (tmp_path / "server.py").write_text("from mcp.server import FastMCP\napp = FastMCP('x')\napp.run()\n")
-    guess = {"name": "server", "command": ["python", "-m", "server"], "source": "guess", "guess": True}
     out = run_wizard(
         _Console(),
-        StubPrompter(
-            selects=[guess, "quick"],
-            texts=["python -m server"],  # confirm the guessed command
-        ),
+        StubPrompter(selects=["use", "quick"]),
         cwd=tmp_path,
     )
-    assert out["command"] == ["python", "-m", "server"]
+    assert out["command"]  # discovered guess used as-is
+    assert "-m" in out["command"]
 
 
 # --- shared-env safety check ---

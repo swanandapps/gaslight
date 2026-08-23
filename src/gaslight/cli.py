@@ -57,7 +57,7 @@ def _group_by_phase(attacks):
 from gaslight.core.reporter import print_terminal, write_html_report
 from gaslight.core.surface import WARN, SurfaceFinding, scan_surface
 from gaslight.core.baseline import diff_baseline, load_baseline, write_baseline
-from gaslight.core.education import CLEAN_LINE, FIX_HINT, OPENING, SAFE_INTRO, fact_for, what_it_checks
+from gaslight.core.education import CLEAN_LINE, FIX_HINT, OPENING, SAFE_INTRO, what_it_checks
 from gaslight.core.wizard import load_config, run_wizard, save_config
 
 
@@ -474,6 +474,108 @@ def _build_attacks(safe: bool, skip: set[str] | None = None):
     return [a for a in attacks if a.key not in skip]
 
 
+async def _run_attack(attack, spec, provider, sink):
+    """Run one attack against a fresh connection. Returns
+    (finding, backend_failed, warning_text|None). Never raises — a failure in
+    one attack degrades to a not-tested finding so the run always completes."""
+    try:
+        async with TargetConnection(spec) as target:
+            finding = await attack.run(target, provider, sink)
+            _downgrade_if_backend_was_down(finding, target)
+            return finding, target.backend_failures > 0, None
+    except TargetUnreachable as exc:
+        # Started for discovery but not this time (flaky boot, or a crash an
+        # earlier attack left behind). Record untested rather than lose the run.
+        return (
+            Finding(
+                attack_key=attack.key,
+                fired=False,
+                reason=f"not tested — could not connect to the target for this attack ({exc}).",
+                attempted=False,
+            ),
+            False,
+            None,
+        )
+    except Exception as exc:
+        # Any other failure — most likely the optional LLM provider being
+        # unreachable inside a model-driven attack — degrades THIS attack to
+        # not-tested, never aborts the run. Surfaced (not swallowed) via warning.
+        return (
+            Finding(
+                attack_key=attack.key,
+                fired=False,
+                reason=f"not tested — attack could not run ({type(exc).__name__}: {exc}).",
+                attempted=False,
+            ),
+            False,
+            f"{attack.name} could not run ({type(exc).__name__}: {escape(str(exc))[:120]}) — recorded as not tested.",
+        )
+
+
+def _short_result(finding) -> str:
+    """One-word status for the pipeline's compact check line — detail lives in
+    the report."""
+    if finding.fired:
+        return "found"
+    if not finding.attempted:
+        return "not tested"
+    return "clean"
+
+
+async def _run_live(console, spec, provider, sink, phases, tool_count):
+    """Drive the scan under a live, in-place pipeline (real terminals only). The
+    bar redraws as each phase resolves; only the current phase's checks stream
+    below it. Warnings are deferred and printed after so they never corrupt the
+    live region. The settled bar is printed once at the end so the visual result
+    persists above the detailed report."""
+    from rich.live import Live
+
+    from gaslight.core.runview import RunView
+
+    view = RunView(spec.label, tool_count, [(name, [a.name for a in atks]) for name, atks in phases])
+    findings: list = []
+    backend_down = False
+    warnings: list[str] = []
+    console.print()
+    with Live(view.render(), console=console, refresh_per_second=12, transient=True) as live:
+        for pidx, (_phase, phase_attacks) in enumerate(phases):
+            view.start_phase(pidx)
+            for attack in phase_attacks:
+                view.start_check(pidx, attack.name, what_it_checks(attack.key) or "")
+                live.update(view.render())
+                finding, bd, warn = await _run_attack(attack, spec, provider, sink)
+                backend_down = backend_down or bd
+                if warn:
+                    warnings.append(warn)
+                view.finish_check(
+                    pidx, attack.name, fired=finding.fired, attempted=finding.attempted, result=_short_result(finding)
+                )
+                live.update(view.render())
+                findings.append(finding)
+    console.print(view.render_bar())
+    for warn in warnings:
+        console.print(f"[yellow]⚠  {warn}[/]")
+    return findings, backend_down
+
+
+async def _run_plain(console, spec, provider, sink, phases):
+    """Sequential fallback for pipes / CI / --json: plain lines, no escape codes,
+    every finding printed as it resolves."""
+    findings: list = []
+    backend_down = False
+    for pnum, (phase, phase_attacks) in enumerate(phases, 1):
+        console.print(f"\n[bold]Phase {pnum}/{len(phases)} · {phase}[/]  [dim]{'─' * 24}[/]")
+        for attack in phase_attacks:
+            what = what_it_checks(attack.key)
+            console.print(f"[cyan]🧪  {attack.name}[/]" + (f" — [dim]{what}[/]" if what else ""))
+            finding, bd, warn = await _run_attack(attack, spec, provider, sink)
+            backend_down = backend_down or bd
+            if warn:
+                console.print(f"[yellow]⚠  {warn}[/]")
+            findings.append(finding)
+    return findings, backend_down
+
+
 async def _run(args: argparse.Namespace, console: Console) -> int:
     # In --json mode all human-facing progress goes to stderr so stdout stays
     # a single clean JSON document for the caller to parse.
@@ -607,55 +709,20 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     console.print()
     console.print(f"[bold]🔦  {OPENING}[/]")
     console.print(f"[dim]{SAFE_INTRO}[/]")
-    console.print()
+
+    phases = _group_by_phase(attacks)
+    # The live pipeline is a transient overlay for real terminals only. On a pipe,
+    # in CI, or under --json it would emit escape codes into someone's log, so
+    # those get plain sequential lines instead. Findings persist either way.
+    use_live = not args.json and console.is_terminal
 
     with Sink() as sink:
         findings = []
         backend_down = False
-        phases = _group_by_phase(attacks)
-        fact_i = 0
-        for pnum, (phase, phase_attacks) in enumerate(phases, 1):
-            console.print(f"\n[bold]Phase {pnum}/{len(phases)} · {phase}[/]  [dim]{'─' * 24}[/]")
-            for attack in phase_attacks:
-                what = what_it_checks(attack.key)
-                banner = f"[cyan]🧪  {attack.name}[/]"
-                console.print(f"{banner} — [dim]{what}[/]" if what else banner)
-                # Sprinkle a true, plain-language fact through the slow beats.
-                fact_i += 1
-                if fact_i % 4 == 0:
-                    console.print(f"   [yellow]💡 {fact_for(fact_i)}[/]")
-                try:
-                    async with TargetConnection(spec) as target:
-                        finding = await attack.run(target, provider, sink)
-                        _downgrade_if_backend_was_down(finding, target)
-                        backend_down = backend_down or target.backend_failures > 0
-                except TargetUnreachable as exc:
-                    # The target started for discovery but not this time (flaky
-                    # boot, a crash left behind by an earlier attack). Record it
-                    # as untested rather than losing the whole run.
-                    finding = Finding(
-                        attack_key=attack.key,
-                        fired=False,
-                        reason=f"not tested — could not connect to the target for this attack ({exc}).",
-                        attempted=False,
-                    )
-                except Exception as exc:
-                    # Any other failure in one attack — most likely the optional
-                    # LLM provider being unreachable (a down `--llm ollama`, an
-                    # API blip) inside a model-driven attack — must degrade THAT
-                    # attack to not-tested, never abort the run. Printed, not
-                    # swallowed, so a real bug is still visible.
-                    console.print(
-                        f"[yellow]⚠  {attack.name} could not run[/] "
-                        f"([dim]{type(exc).__name__}: {escape(str(exc))[:120]}[/]) — recorded as not tested."
-                    )
-                    finding = Finding(
-                        attack_key=attack.key,
-                        fired=False,
-                        reason=f"not tested — attack could not run ({type(exc).__name__}: {exc}).",
-                        attempted=False,
-                    )
-                findings.append(finding)
+        if use_live:
+            findings, backend_down = await _run_live(console, spec, provider, sink, phases, tool_count)
+        else:
+            findings, backend_down = await _run_plain(console, spec, provider, sink, phases)
 
     # Coverage, made visible: what ran, what didn't, why, and how to fix it.
     tested = [f for f in findings if f.attempted]
