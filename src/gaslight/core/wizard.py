@@ -139,22 +139,29 @@ def run_wizard(console, *, prompt_ask, confirm_ask, cwd: Path | None = None, for
         "\n[dim]An optional LLM makes probes smarter and explains findings in plain English. "
         "It never decides a verdict — every CONFIRMED still comes from physical proof.[/]"
     )
-    # Only offer providers that will actually work — a key-less anthropic/openai
-    # choice would just fail later. off and ollama (local) are always available.
-    choices = ["off", "ollama"]
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        choices.append("anthropic")
-    if os.environ.get("OPENAI_API_KEY"):
-        choices.append("openai")
-    if "openai" not in choices and "anthropic" not in choices:
-        console.print(
-            "[dim](No hosted key found. Set OPENAI_API_KEY or ANTHROPIC_API_KEY before running to enable "
-            "a hosted model, or use 'ollama' — free and local.)[/]"
-        )
-    choice = prompt_ask("LLM layer", choices=choices, default="off")
-    # "off" -> force the deterministic core, so a stray API key in the env
-    # doesn't silently turn the layer on.
-    llm = "scripted" if choice == "off" else choice
+    # Offer all providers. For a hosted one with no key in the environment, ask
+    # for the key right here — used only for this run, never saved to disk.
+    choice = prompt_ask("LLM layer", choices=["off", "ollama", "anthropic", "openai"], default="off")
+    if choice == "off":
+        # deterministic core, regardless of any stray env key
+        llm = "scripted"
+    elif choice == "ollama":
+        llm = "ollama"
+    else:
+        env_name = "OPENAI_API_KEY" if choice == "openai" else "ANTHROPIC_API_KEY"
+        if os.environ.get(env_name):
+            console.print(f"[dim]Using {env_name} from your environment.[/]")
+            llm = choice
+        else:
+            key = str(
+                prompt_ask(f"Paste your {env_name} (used only for this run, never saved)", default="", password=True)
+            ).strip()
+            if key:
+                os.environ[env_name] = key  # this process only; save_config never writes it
+                llm = choice
+            else:
+                console.print("[dim]No key entered — using the deterministic core instead.[/]")
+                llm = "scripted"
 
     save = confirm_ask(
         "Save these settings (command + LLM choice, never credentials) to .gaslight.json?",

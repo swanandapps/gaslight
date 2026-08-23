@@ -3,6 +3,7 @@ The wizard's prompt/confirm functions are injected, so it's testable without a
 real terminal.
 """
 
+import os
 import sys
 
 from gaslight.cli import _running_in_targets_env
@@ -105,6 +106,34 @@ def test_wizard_manual_picks_detected_target(tmp_path):
     )
     assert out["mode"] == "manual"
     assert out["command"] == ["npx", "-y", "pkg"]
+
+
+def test_wizard_openai_prompts_for_key_when_missing(tmp_path, monkeypatch):
+    # Picking a hosted provider with no key in the env should ASK for it inline.
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    try:
+        out = run_wizard(
+            _Console(),
+            prompt_ask=_prompt(["npx -y srv", "openai", "sk-test-123"]),  # cmd · llm · pasted key
+            confirm_ask=_confirm([False, True]),
+            cwd=tmp_path,
+        )
+        assert out["llm"] == "openai"
+        assert os.environ.get("OPENAI_API_KEY") == "sk-test-123"
+    finally:
+        os.environ.pop("OPENAI_API_KEY", None)
+
+
+def test_wizard_openai_blank_key_degrades_to_deterministic(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    out = run_wizard(
+        _Console(),
+        prompt_ask=_prompt(["npx -y srv", "openai", ""]),  # no key pasted
+        confirm_ask=_confirm([False, True]),
+        cwd=tmp_path,
+    )
+    assert out["llm"] == "scripted"
+    assert os.environ.get("OPENAI_API_KEY") is None
 
 
 def test_wizard_force_manual_skips_auto_choice(tmp_path):
