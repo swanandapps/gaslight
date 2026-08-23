@@ -15,6 +15,8 @@ import json
 import shlex
 from pathlib import Path
 
+from gaslight.core.discovery import discover_targets
+
 CONFIG_NAME = ".gaslight.json"
 
 
@@ -40,20 +42,50 @@ def save_config(cwd: Path, settings: dict) -> Path:
     return path
 
 
-def run_wizard(console, *, prompt_ask, confirm_ask) -> dict:
+_CUSTOM_HINT = (
+    "How does your agent start? e.g.  npx -y some-mcp-server   or   "
+    ".venv/bin/python -m your_pkg.server   (from the project root)"
+)
+
+
+def _choose_target(console, cwd: Path, prompt_ask):
+    """Return (command:list|None, url:str|None). Offers auto-detected targets
+    plus a custom option; falls straight to custom if nothing was detected."""
+    targets = discover_targets(cwd)
+    if targets:
+        console.print("[bold]Found these ways to start an agent:[/]")
+        for i, t in enumerate(targets, 1):
+            desc = t.get("url") or " ".join(t.get("command", []))
+            tag = " [yellow](best guess — edit if wrong)[/]" if t.get("guess") else ""
+            console.print(f"  [bold]{i}[/] {t['name']} — [dim]{desc}[/]{tag}  [dim]· {t['source']}[/]")
+        console.print("  [bold]c[/] custom — enter the command myself")
+        pick = str(prompt_ask("Pick a target", default="1")).strip().lower()
+        if pick != "c" and pick.isdigit() and 1 <= int(pick) <= len(targets):
+            chosen = targets[int(pick) - 1]
+            if chosen.get("url"):
+                return None, chosen["url"]
+            command = chosen.get("command") or []
+            if chosen.get("guess"):
+                command = shlex.split(prompt_ask("Launch command (edit if needed)", default=" ".join(command)))
+            return command, None
+        # any other input → custom
+    else:
+        console.print("[dim]Couldn't auto-detect how your agent starts — no MCP config or server file found.[/]")
+    console.print(f"[dim]{_CUSTOM_HINT}[/]")
+    return shlex.split(prompt_ask("Launch command")), None
+
+
+def run_wizard(console, *, prompt_ask, confirm_ask, cwd: Path | None = None) -> dict:
     """Walk the user through setup. `prompt_ask(text, **kw)` and
     `confirm_ask(text, **kw)` are injected (rich.prompt in the CLI, stubs in
     tests) so this stays testable. Returns
-    {"command": [...], "env": {...}, "llm": str|None, "save": bool}."""
+    {"command": [...], "url": str|None, "env": {...}, "llm": str|None, "save": bool}."""
+    cwd = cwd or Path.cwd()
     console.print("\n[bold]Let's set up a scan.[/] gaslight attacks your agent's tools and grades them — safely.\n")
 
-    # 1. How the agent starts. gaslight launches it as a separate process.
-    console.print(
-        "[dim]How does your agent start? Examples:\n"
-        "  npx -y some-mcp-server\n"
-        "  .venv/bin/python -m your_pkg.server   (run from the project root)[/]"
-    )
-    command = shlex.split(prompt_ask("Launch command"))
+    # 1. How the agent starts — auto-detect from configs/manifests first, then
+    #    offer "custom", so nobody stares at a blank prompt.
+    command, url = _choose_target(console, cwd, prompt_ask)
 
     # 2. Backend / credentials. This is where people learn gaslight isn't just a
     #    scanner — deep coverage needs the agent's tools to actually work.
@@ -88,4 +120,4 @@ def run_wizard(console, *, prompt_ask, confirm_ask) -> dict:
         "Save these settings (command + LLM choice, never credentials) to .gaslight.json?",
         default=True,
     )
-    return {"command": command, "env": env, "llm": llm, "save": save}
+    return {"command": command, "url": url, "env": env, "llm": llm, "save": save}

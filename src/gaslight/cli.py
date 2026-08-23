@@ -97,12 +97,16 @@ def _resolve_target_without_args(env, llm, console):
     if sys.stdin.isatty() and sys.stdout.isatty():
         from rich.prompt import Confirm, Prompt
 
-        settings = run_wizard(console, prompt_ask=Prompt.ask, confirm_ask=Confirm.ask)
+        settings = run_wizard(console, prompt_ask=Prompt.ask, confirm_ask=Confirm.ask, cwd=cwd)
         merged_env = {**env, **(settings.get("env") or {})}
         chosen_llm = llm if llm is not None else settings.get("llm")
         if settings.get("save"):
-            saved = save_config(cwd, {"command": settings["command"], "llm": settings["llm"]})
+            saved = save_config(
+                cwd, {"command": settings.get("command"), "url": settings.get("url"), "llm": settings["llm"]}
+            )
             console.print(f"[dim]Saved to {saved.name} — next time just run `gaslight`.[/]")
+        if settings.get("url"):
+            return TargetSpec(url=settings["url"]), chosen_llm
         return TargetSpec(command=settings["command"], env=merged_env or None), chosen_llm
 
     return None, llm

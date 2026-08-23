@@ -52,11 +52,13 @@ def test_load_config_bad_json_returns_none(tmp_path):
 # --- wizard flow ---
 
 
-def test_wizard_simple_no_backend():
+def test_wizard_simple_no_backend(tmp_path):
+    # empty cwd → nothing auto-detected → custom prompt path
     out = run_wizard(
         _Console(),
         prompt_ask=_prompt(["npx -y srv", "off"]),
         confirm_ask=_confirm([False, True]),  # needs-backend? no · save? yes
+        cwd=tmp_path,
     )
     assert out["command"] == ["npx", "-y", "srv"]
     assert out["env"] == {}
@@ -64,16 +66,30 @@ def test_wizard_simple_no_backend():
     assert out["save"] is True
 
 
-def test_wizard_with_backend_and_ollama():
+def test_wizard_with_backend_and_ollama(tmp_path):
     out = run_wizard(
         _Console(),
         prompt_ask=_prompt(["python -m x", "KEY=val", "", "ollama"]),
         confirm_ask=_confirm([True, False]),  # needs-backend? yes · save? no
+        cwd=tmp_path,
     )
     assert out["command"] == ["python", "-m", "x"]
     assert out["env"] == {"KEY": "val"}
     assert out["llm"] == "ollama"
     assert out["save"] is False
+
+
+def test_wizard_offers_and_picks_autodetected_target(tmp_path):
+    # a project .mcp.json → the wizard should offer it; picking "1" uses its
+    # exact command (no blank prompt, no typing).
+    (tmp_path / ".mcp.json").write_text('{"mcpServers": {"srv": {"command": "npx", "args": ["-y", "pkg"]}}}')
+    out = run_wizard(
+        _Console(),
+        prompt_ask=_prompt(["1", "off"]),  # pick target #1 · llm off
+        confirm_ask=_confirm([False, True]),
+        cwd=tmp_path,
+    )
+    assert out["command"] == ["npx", "-y", "pkg"]
 
 
 # --- shared-env safety check ---
