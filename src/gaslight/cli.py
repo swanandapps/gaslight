@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 from rich.console import Console
@@ -522,6 +524,26 @@ def _short_result(finding) -> str:
     return "clean"
 
 
+@contextlib.contextmanager
+def _muffle_stderr():
+    """Redirect the OS-level stderr fd to a throwaway file for the duration of the
+    block, then restore it. Real agents (and chatty libraries) log to stderr on
+    every tool call; that output, landing on the same terminal the live pipeline
+    is drawing on, corrupts it into stacked frames. Muffling the fd — not just
+    Python's sys.stderr — catches every target subprocess and library at the
+    source, however deep it's spawned. Only wraps the live view; the plain path
+    and --json keep their stderr so progress and diagnostics still show."""
+    saved = os.dup(2)
+    sink_file = tempfile.TemporaryFile()
+    try:
+        os.dup2(sink_file.fileno(), 2)
+        yield
+    finally:
+        os.dup2(saved, 2)
+        os.close(saved)
+        sink_file.close()
+
+
 async def _run_live(console, spec, provider, sink, phases, tool_count):
     """Drive the scan under a live, in-place pipeline (real terminals only). The
     bar redraws as each phase resolves; only the current phase's checks stream
@@ -537,7 +559,7 @@ async def _run_live(console, spec, provider, sink, phases, tool_count):
     backend_down = False
     warnings: list[str] = []
     console.print()
-    with Live(view.render(), console=console, refresh_per_second=12, transient=True) as live:
+    with _muffle_stderr(), Live(view.render(), console=console, refresh_per_second=12, transient=True) as live:
         for pidx, (_phase, phase_attacks) in enumerate(phases):
             view.start_phase(pidx)
             for attack in phase_attacks:
