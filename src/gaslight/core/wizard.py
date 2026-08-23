@@ -1,12 +1,13 @@
 """Interactive setup — the friendly way to point gaslight at an agent.
 
 Shown when someone runs `gaslight` with no target in an interactive terminal
-(the CLI checks isatty first, so this never fires in CI). The questions
-themselves teach what gaslight needs and what it is: how your agent starts, a
-test backend if its tools need one, and an optional LLM for a richer report.
+(the CLI checks isatty first, so this never fires in CI). Uses arrow-key select
+menus with a description on every option, in the spirit of create-vite /
+create-next-app — the questions themselves teach what gaslight needs.
 
-Answers can be saved to `.gaslight.json` (command + LLM choice only — never
-credentials), so the next run is just `gaslight`.
+All UI goes through an injected `prompter` (a questionary-backed one in the CLI,
+a stub in tests) with four methods: select / text / password / confirm. Answers
+can be saved to `.gaslight.json` (target + LLM choice only — never credentials).
 """
 
 from __future__ import annotations
@@ -22,8 +23,7 @@ CONFIG_NAME = ".gaslight.json"
 
 
 def load_config(cwd: Path) -> dict | None:
-    """Load a saved `.gaslight.json` from `cwd`, or None if absent/unreadable.
-    Shape: {"command": [...]} or {"url": "..."}, optional "llm"."""
+    """Load a saved `.gaslight.json` from `cwd`, or None if absent/unreadable."""
     path = cwd / CONFIG_NAME
     if not path.is_file():
         return None
@@ -43,128 +43,110 @@ def save_config(cwd: Path, settings: dict) -> Path:
     return path
 
 
-_CUSTOM_HINT = (
-    "How does your agent start? e.g.  npx -y some-mcp-server   or   "
-    ".venv/bin/python -m your_pkg.server   (from the project root)"
-)
-
-
-def _choose_target(console, cwd: Path, prompt_ask):
-    """Return (command:list|None, url:str|None). Offers auto-detected targets
-    plus a custom option; falls straight to custom if nothing was detected."""
+def _choose_target(console, prompter, cwd: Path):
+    """Return (command:list|None, url:str|None) via a select menu of detected
+    targets + a custom option."""
     targets = discover_targets(cwd)
     if targets:
-        console.print("[bold]Found these ways to start an agent:[/]")
-        for i, t in enumerate(targets, 1):
+        options = []
+        for t in targets:
             desc = t.get("url") or " ".join(t.get("command", []))
-            tag = " [yellow](best guess — edit if wrong)[/]" if t.get("guess") else ""
-            console.print(f"  [bold]{i}[/] {t['name']} — [dim]{desc}[/]{tag}  [dim]· {t['source']}[/]")
-        console.print("  [bold]c[/] custom — enter the command myself")
-        pick = str(prompt_ask("Pick a target", default="1")).strip().lower()
-        if pick != "c" and pick.isdigit() and 1 <= int(pick) <= len(targets):
-            chosen = targets[int(pick) - 1]
-            if chosen.get("url"):
-                return None, chosen["url"]
-            command = chosen.get("command") or []
-            if chosen.get("guess"):
-                command = shlex.split(prompt_ask("Launch command (edit if needed)", default=" ".join(command)))
-            return command, None
-        # any other input → custom
+            label = desc + ("   (best guess)" if t.get("guess") else "")
+            options.append({"name": label, "value": t})
+        options.append({"name": "Custom — enter the command myself", "value": "custom"})
+        chosen = prompter.select("How does your agent start?", options)
     else:
-        console.print("[dim]Couldn't auto-detect how your agent starts — no MCP config or server file found.[/]")
-    console.print(f"[dim]{_CUSTOM_HINT}[/]")
-    return shlex.split(prompt_ask("Launch command")), None
+        console.print("[dim]Couldn't auto-detect how your agent starts.[/]")
+        chosen = "custom"
+
+    if chosen == "custom":
+        cmd = prompter.text(
+            "Launch command  (e.g.  npx -y some-mcp-server   or   .venv/bin/python -m pkg.server)"
+        )
+        return shlex.split(cmd), None
+    if chosen.get("url"):
+        return None, chosen["url"]
+    command = chosen.get("command") or []
+    if chosen.get("guess"):
+        command = shlex.split(prompter.text("Confirm or edit the command", default=" ".join(command)))
+    return command, None
 
 
-def run_wizard(console, *, prompt_ask, confirm_ask, cwd: Path | None = None, force_manual: bool = False) -> dict:
-    """Walk the user through setup. `prompt_ask(text, **kw)` and
-    `confirm_ask(text, **kw)` are injected (rich.prompt in the CLI, stubs in
-    tests) so this stays testable. Returns
+def _resolve_llm(provider: str, prompter, console) -> str:
+    """Turn an LLM menu pick into an llm value, asking for a key inline when a
+    hosted provider is chosen and none is in the environment."""
+    if provider == "off":
+        return "scripted"  # deterministic core regardless of any stray env key
+    if provider == "ollama":
+        return "ollama"
+    env_name = "OPENAI_API_KEY" if provider == "openai" else "ANTHROPIC_API_KEY"
+    if os.environ.get(env_name):
+        console.print(f"[dim]Using {env_name} from your environment.[/]")
+        return provider
+    key = (prompter.password(f"Paste your {env_name}  (used only for this run, never saved)") or "").strip()
+    if key:
+        os.environ[env_name] = key  # this process only; save_config never writes it
+        return provider
+    console.print("[dim]No key entered — using the deterministic core instead.[/]")
+    return "scripted"
+
+
+def run_wizard(console, prompter, *, cwd: Path | None = None, force_configure: bool = False) -> dict:
+    """Walk the user through setup with select menus. Returns
     {"mode", "command", "url", "env", "llm", "save"}.
 
-    Two paths: **Auto** (offered when a target is confidently detected) returns
-    immediately with just the detected target and the deterministic core, so the
-    caller can run the whole scan with no further questions — if it fails to
-    start, the caller re-enters with force_manual=True. **Manual** walks through
-    the command, a test backend, and the LLM."""
+    Two paths. **Quick scan** returns immediately with the detected target and
+    the deterministic core (no key, no setup) — the caller runs the whole scan;
+    if it can't start, the caller re-enters with force_configure=True. **Configure**
+    walks through a test backend and the LLM."""
     cwd = cwd or Path.cwd()
-    console.print("\n[bold]Let's set up a scan.[/] gaslight attacks your agent's tools and grades them — safely.\n")
+    console.print("\n[bold]gaslight setup[/] — point it at your agent, get a graded security report.\n")
 
-    # Auto vs Manual — offer Auto only when we actually detected how to start it.
-    if not force_manual:
-        targets = discover_targets(cwd)
-        if targets:
-            top = targets[0]
-            desc = top.get("url") or " ".join(top.get("command", []))
-            hedge = " [yellow](best guess)[/]" if top.get("guess") else ""
-            console.print(f"Detected how your agent starts: [bold]{desc}[/]{hedge}\n")
-            console.print("  [bold]a[/]  Auto  — run the full scan now, using that (recommended)")
-            console.print("  [bold]m[/]  Manual — set the command, a test backend, and the LLM yourself")
-            if str(prompt_ask("Auto or manual?", choices=["a", "m"], default="a")).strip().lower() == "a":
-                return {
-                    "mode": "auto",
-                    "command": top.get("command"),
-                    "url": top.get("url"),
-                    "env": {},
-                    "llm": "scripted",  # deterministic core; fast first result
-                    "save": False,
-                }
+    # 1. Target
+    command, url = _choose_target(console, prompter, cwd)
 
-    # --- Manual path ---
-    # 1. How the agent starts — auto-detect from configs/manifests first, then
-    #    offer "custom", so nobody stares at a blank prompt.
-    command, url = _choose_target(console, cwd, prompt_ask)
-
-    # 2. Backend / credentials. This is where people learn gaslight isn't just a
-    #    scanner — deep coverage needs the agent's tools to actually work.
-    env: dict[str, str] = {}
-    if confirm_ask(
-        "Does your agent need a backend or credentials to run (a database URL, an API key)?",
-        default=False,
-    ):
-        console.print(
-            "[yellow]Use a TEST backend and throwaway values — gaslight sends real payloads, "
-            "so never point it at production.[/]"
+    # 2. Quick vs Configure — each option says exactly what it does (no hidden LLM).
+    if not force_configure:
+        mode = prompter.select(
+            "How do you want to run it?",
+            [
+                {"name": "Quick scan  —  run the security checks now · no API key, no setup", "value": "quick"},
+                {"name": "Configure   —  add a test backend and/or an LLM, then run", "value": "configure"},
+            ],
         )
+        if mode == "quick":
+            return {"mode": "auto", "command": command, "url": url, "env": {}, "llm": "scripted", "save": False}
+
+    # 3. Test backend
+    env: dict[str, str] = {}
+    if prompter.select(
+        "Do your agent's tools need a backend to run (a database, an API)?",
+        [
+            {"name": "No  —  scan what runs without one", "value": False},
+            {"name": "Yes —  I'll add a TEST connection (throwaway only)", "value": True},
+        ],
+    ):
+        console.print("[yellow]Use a TEST backend and throwaway values — gaslight sends real payloads.[/]")
         while True:
-            pair = prompt_ask("  KEY=VALUE (blank to finish)", default="")
+            pair = prompter.text("  KEY=VALUE  (blank to finish)")
             if not pair.strip():
                 break
             if "=" in pair:
                 key, value = pair.split("=", 1)
                 env[key.strip()] = value.strip()
 
-    # 3. Optional LLM layer, explained.
-    console.print(
-        "\n[dim]An optional LLM makes probes smarter and explains findings in plain English. "
-        "It never decides a verdict — every CONFIRMED still comes from physical proof.[/]"
+    # 4. Optional LLM layer
+    provider = prompter.select(
+        "Optional LLM layer  (smarter probes + plain-English findings; it never decides a verdict)",
+        [
+            {"name": "Off        —  deterministic checks only (recommended)", "value": "off"},
+            {"name": "Ollama     —  free, local, private", "value": "ollama"},
+            {"name": "OpenAI     —  needs an API key", "value": "openai"},
+            {"name": "Anthropic  —  needs an API key", "value": "anthropic"},
+        ],
     )
-    # Offer all providers. For a hosted one with no key in the environment, ask
-    # for the key right here — used only for this run, never saved to disk.
-    choice = prompt_ask("LLM layer", choices=["off", "ollama", "anthropic", "openai"], default="off")
-    if choice == "off":
-        # deterministic core, regardless of any stray env key
-        llm = "scripted"
-    elif choice == "ollama":
-        llm = "ollama"
-    else:
-        env_name = "OPENAI_API_KEY" if choice == "openai" else "ANTHROPIC_API_KEY"
-        if os.environ.get(env_name):
-            console.print(f"[dim]Using {env_name} from your environment.[/]")
-            llm = choice
-        else:
-            key = str(
-                prompt_ask(f"Paste your {env_name} (used only for this run, never saved)", default="", password=True)
-            ).strip()
-            if key:
-                os.environ[env_name] = key  # this process only; save_config never writes it
-                llm = choice
-            else:
-                console.print("[dim]No key entered — using the deterministic core instead.[/]")
-                llm = "scripted"
+    llm = _resolve_llm(provider, prompter, console)
 
-    save = confirm_ask(
-        "Save these settings (command + LLM choice, never credentials) to .gaslight.json?",
-        default=True,
-    )
-    return {"mode": "manual", "command": command, "url": url, "env": env, "llm": llm, "save": save}
+    # 5. Save
+    save = prompter.confirm("Save these settings to .gaslight.json for next time (never saves keys)?", default=True)
+    return {"mode": "configure", "command": command, "url": url, "env": env, "llm": llm, "save": save}

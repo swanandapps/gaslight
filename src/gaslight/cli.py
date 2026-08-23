@@ -80,6 +80,67 @@ def _running_in_targets_env(command) -> bool:
         return False
 
 
+def _ask_blocking(question):
+    """Run a questionary prompt to completion and return its value.
+
+    The wizard runs inside gaslight's own asyncio loop (`_run` is async), but
+    questionary/prompt_toolkit spin up their OWN loop via `asyncio.run()` — which
+    raises "cannot be called from a running event loop" when nested. So we run
+    the prompt on a worker thread, where no loop is running. Ctrl-C surfaces as a
+    None answer (questionary's default), which the caller turns into a cancel."""
+    import threading
+
+    box: dict = {}
+
+    def worker():
+        try:
+            box["value"] = question.ask()
+        except BaseException as exc:  # re-raised on the calling thread below
+            box["error"] = exc
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+    if "error" in box:
+        raise box["error"]
+    return box["value"]
+
+
+class _QuestionaryPrompter:
+    """The real terminal UI for the wizard — arrow-key select menus and inline
+    text/password prompts, in the create-vite / create-next-app spirit. Kept out
+    of wizard.py so the wizard stays testable with a stub. `.ask()` returns None
+    when the user hits Ctrl-C; we turn that into a clean cancel."""
+
+    @staticmethod
+    def _cancel(value):
+        if value is None:
+            raise KeyboardInterrupt
+        return value
+
+    def select(self, message, options):
+        import questionary
+
+        choices = [questionary.Choice(title=o["name"], value=o["value"]) for o in options]
+        q = questionary.select(message, choices=choices, instruction="(↑↓ to move, ⏎ to pick)")
+        return self._cancel(_ask_blocking(q))
+
+    def text(self, message, default=""):
+        import questionary
+
+        return self._cancel(_ask_blocking(questionary.text(message, default=default)))
+
+    def password(self, message):
+        import questionary
+
+        return self._cancel(_ask_blocking(questionary.password(message)))
+
+    def confirm(self, message, default=True):
+        import questionary
+
+        return self._cancel(_ask_blocking(questionary.confirm(message, default=default)))
+
+
 def _spec_from_settings(settings, env):
     """Build a TargetSpec from a wizard result."""
     if settings.get("url"):
@@ -109,9 +170,7 @@ def _resolve_target_without_args(env, llm, console):
         return TargetSpec(command=list(cfg["command"]), env=env or None), cfg_llm, False
 
     if _interactive():
-        from rich.prompt import Confirm, Prompt
-
-        settings = run_wizard(console, prompt_ask=Prompt.ask, confirm_ask=Confirm.ask, cwd=cwd)
+        settings = run_wizard(console, _QuestionaryPrompter(), cwd=cwd)
         chosen_llm = llm if llm is not None else settings.get("llm")
         if settings.get("save"):
             saved = save_config(
@@ -124,14 +183,10 @@ def _resolve_target_without_args(env, llm, console):
 
 
 def _manual_fallback(env, console):
-    """After Auto fails to start the target, re-run the wizard forced to Manual
-    so the user can correct the command / add a test backend. Returns
+    """After a Quick scan fails to start the target, re-run the wizard forced to
+    Configure so the user can correct the command / add a test backend. Returns
     (TargetSpec, llm)."""
-    from rich.prompt import Confirm, Prompt
-
-    settings = run_wizard(
-        console, prompt_ask=Prompt.ask, confirm_ask=Confirm.ask, cwd=Path.cwd(), force_manual=True
-    )
+    settings = run_wizard(console, _QuestionaryPrompter(), cwd=Path.cwd(), force_configure=True)
     return _spec_from_settings(settings, env), settings.get("llm")
 from gaslight.core.scorer import grade
 from gaslight.core.sink import Sink
@@ -495,7 +550,7 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
                 for line in tail:
                     console.print(f"  [dim]{escape(line)}[/]")
             if auto_from_wizard and _interactive():
-                console.print("\n[yellow]Auto couldn't start your agent — let's set it up manually.[/]")
+                console.print("\n[yellow]Couldn't start your agent — let's configure it together.[/]")
                 spec, args.llm = _manual_fallback(env, console)
                 auto_from_wizard = False
                 continue
