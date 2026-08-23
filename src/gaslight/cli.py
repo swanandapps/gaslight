@@ -59,7 +59,7 @@ def _group_by_phase(attacks):
 from gaslight.core.reporter import print_terminal, write_html_report
 from gaslight.core.surface import WARN, SurfaceFinding, scan_surface
 from gaslight.core.baseline import diff_baseline, load_baseline, write_baseline
-from gaslight.core.education import CLEAN_LINE, FIX_HINT, OPENING, SAFE_INTRO, what_it_checks
+from gaslight.core.education import CLEAN_LINE, FIX_HINT, what_it_checks
 from gaslight.core.wizard import load_config, run_wizard, save_config
 
 
@@ -193,6 +193,7 @@ def _manual_fallback(env, console):
 from gaslight.core.scorer import grade
 from gaslight.core.sink import Sink
 from gaslight.core.attacks.base import Finding
+from gaslight.core.banner import print_banner
 from gaslight.core.blast import compute_blast
 from gaslight.core.doctor import diagnose_launch, stderr_tail
 from gaslight.core.target import TargetConnection, TargetSpec, TargetUnreachable
@@ -524,6 +525,30 @@ def _short_result(finding) -> str:
     return "clean"
 
 
+def _truncate_tools(names: list[str], keep: int = 4) -> str:
+    if len(names) <= keep:
+        return ", ".join(names)
+    return ", ".join(names[:keep]) + f"  … +{len(names) - keep} more"
+
+
+def _print_run_card(console, tool_names, llm_active, provider_name, safe) -> None:
+    """One compact, aligned card shown just before the scan — replaces the old
+    stack of separate banners (found-agent dump, LLM line, personality opener,
+    safety paragraph). Tools / Engine / Safety, one line each."""
+    console.print()
+    console.print(f"[dim]{'Tools':<7}[/]{_truncate_tools(tool_names)}")
+    if llm_active:
+        engine = f"[green]LLM on[/] ({provider_name}) — a real model drives your tools like an agent; never decides a verdict"
+    else:
+        engine = "deterministic core — a scripted agent drives your tools (offline, no key). Add [bold]--llm ollama[/] for a real one"
+    console.print(f"[dim]{'Engine':<7}[/]{engine}")
+    if safe:
+        console.print(f"[dim]{'Safety':<7}[/]safe mode — no destructive actions · probes stay local · secrets masked")
+    else:
+        console.print(f"[yellow]{'Safety':<7}⚠ unsafe mode — destructive probes enabled[/]")
+    console.print()
+
+
 @contextlib.contextmanager
 def _muffle_stderr():
     """Redirect the OS-level stderr fd to a throwaway file for the duration of the
@@ -604,6 +629,10 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     if args.json:
         console = Console(stderr=True)
 
+    # Branded load banner — first thing shown, once, in an interactive terminal.
+    if not args.json and console.is_terminal:
+        print_banner(console)
+
     env = {}
     for pair in getattr(args, "env", []) or []:
         if "=" not in pair:
@@ -653,10 +682,6 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
         discovery = TargetConnection(spec, capture_stderr=True)
         try:
             async with discovery as target:
-                console.print(
-                    f"[bold cyan]🔍  Found your agent[/]  ·  {len(target.tools)} tool(s): "
-                    f"{', '.join(target.tool_names())}"
-                )
                 tool_count = len(target.tools)
                 discovered_tools = list(target.tools)
                 surface = scan_surface(target.tools, target.resources)
@@ -693,10 +718,6 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
         )
         provider = ScriptedProvider()
     llm_active = llm_is_active(provider)
-    if llm_active:
-        console.print(f"[green]🧠  LLM on[/] ({provider.name}) — richer report; it never decides a verdict.")
-    else:
-        console.print("[dim]🧠  LLM off — deterministic core. Want richer output? add `--llm ollama` (free, local).[/]")
 
     # Rug-pull guard (see core/baseline.py). Record on first sight, compare
     # afterwards — drift rides into the report as WARN-level surface findings,
@@ -727,10 +748,8 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     # a false negative masquerading as "no leak". Correctness over speed:
     # one extra subprocess spawn per attack is the right trade for a
     # security tool that must never let stale cross-attack state imply safe.
-    # A little personality up front, then the plain safety reassurance.
-    console.print()
-    console.print(f"[bold]🔦  {OPENING}[/]")
-    console.print(f"[dim]{SAFE_INTRO}[/]")
+    # One compact run card — tools, engine, safety — then straight into the scan.
+    _print_run_card(console, [t.name for t in discovered_tools], llm_active, provider.name, args.safe)
 
     phases = _group_by_phase(attacks)
     # The live pipeline is a transient overlay for real terminals only. On a pipe,

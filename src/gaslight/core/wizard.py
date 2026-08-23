@@ -70,9 +70,13 @@ def _choose_target(console, prompter, cwd: Path):
 
     primary = targets[0]
     source = primary.get("source", "your project")
-    qualifier = "  [dim](best guess)[/]" if primary.get("guess") else ""
-    console.print(f"[green]✓  Found your agent[/]{qualifier}")
-    console.print(f"[dim]   Detected in {source} — this is how it starts:[/]\n")
+    if primary.get("guess"):
+        where = source.replace("guessed from ", "").strip() or "your project files"
+        console.print("[green]✓  Found your agent[/]  [dim](best guess)[/]")
+        console.print(f"[dim]   Guessed from {where} — here's how it likely starts:[/]\n")
+    else:
+        console.print("[green]✓  Found your agent[/]")
+        console.print(f"[dim]   Detected in {source} — here's how it starts:[/]\n")
     console.print(f"       [bold cyan]{_describe(primary)}[/]\n")
 
     options = [{"name": "Yes, use this", "value": "use"}]
@@ -120,12 +124,7 @@ def run_wizard(console, prompter, *, cwd: Path | None = None, force_configure: b
     if it can't start, the caller re-enters with force_configure=True. **Configure**
     walks through a test backend and the LLM."""
     cwd = cwd or Path.cwd()
-    # Welcome: one bold line + one sentence, no bordered box (council: Jobs/PG —
-    # you installed it, you know what it is; separation comes from whitespace).
-    console.print()
-    console.print("[bold]gaslight[/] — automated penetration testing for AI agents.")
-    console.print("[dim]Safe, controlled attacks on your agent, graded, with a report your AI can fix from.[/]")
-    console.print()
+    # No welcome text here — cli prints the branded banner before the wizard runs.
 
     # 1. Target
     command, url = _choose_target(console, prompter, cwd)
@@ -165,12 +164,13 @@ def run_wizard(console, prompter, *, cwd: Path | None = None, force_configure: b
     # 4. Optional LLM layer — say what you GET, in a word each. It never decides
     # a verdict; the deterministic core stands alone.
     console.print()
-    console.print("[dim]An optional AI layer makes probes smarter and writes findings in plain English.[/]")
-    console.print("[dim]It never decides a verdict — the deterministic checks do that.[/]")
+    console.print("[dim]gaslight drives your tools the way an AI agent would. By default a scripted[/]")
+    console.print("[dim]agent does it (offline, reproducible). A real model makes the test more[/]")
+    console.print("[dim]realistic — but never decides a verdict; physical proof does.[/]")
     provider = prompter.select(
-        "Add an AI layer?",
+        "Drive the probes with a real model?",
         [
-            {"name": "No — deterministic checks only   (fast · free · private)", "value": "off"},
+            {"name": "No — use the built-in scripted agent   (fast · free · offline)", "value": "off"},
             {"name": "Ollama                           (free · local · nothing leaves your machine)", "value": "ollama"},
             {"name": "OpenAI                           (needs an API key)", "value": "openai"},
             {"name": "Anthropic                        (needs an API key)", "value": "anthropic"},
