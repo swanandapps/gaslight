@@ -75,14 +75,41 @@ def _choose_target(console, cwd: Path, prompt_ask):
     return shlex.split(prompt_ask("Launch command")), None
 
 
-def run_wizard(console, *, prompt_ask, confirm_ask, cwd: Path | None = None) -> dict:
+def run_wizard(console, *, prompt_ask, confirm_ask, cwd: Path | None = None, force_manual: bool = False) -> dict:
     """Walk the user through setup. `prompt_ask(text, **kw)` and
     `confirm_ask(text, **kw)` are injected (rich.prompt in the CLI, stubs in
     tests) so this stays testable. Returns
-    {"command": [...], "url": str|None, "env": {...}, "llm": str|None, "save": bool}."""
+    {"mode", "command", "url", "env", "llm", "save"}.
+
+    Two paths: **Auto** (offered when a target is confidently detected) returns
+    immediately with just the detected target and the deterministic core, so the
+    caller can run the whole scan with no further questions — if it fails to
+    start, the caller re-enters with force_manual=True. **Manual** walks through
+    the command, a test backend, and the LLM."""
     cwd = cwd or Path.cwd()
     console.print("\n[bold]Let's set up a scan.[/] gaslight attacks your agent's tools and grades them — safely.\n")
 
+    # Auto vs Manual — offer Auto only when we actually detected how to start it.
+    if not force_manual:
+        targets = discover_targets(cwd)
+        if targets:
+            top = targets[0]
+            desc = top.get("url") or " ".join(top.get("command", []))
+            hedge = " [yellow](best guess)[/]" if top.get("guess") else ""
+            console.print(f"Detected how your agent starts: [bold]{desc}[/]{hedge}\n")
+            console.print("  [bold]a[/]  Auto  — run the full scan now, using that (recommended)")
+            console.print("  [bold]m[/]  Manual — set the command, a test backend, and the LLM yourself")
+            if str(prompt_ask("Auto or manual?", choices=["a", "m"], default="a")).strip().lower() == "a":
+                return {
+                    "mode": "auto",
+                    "command": top.get("command"),
+                    "url": top.get("url"),
+                    "env": {},
+                    "llm": "scripted",  # deterministic core; fast first result
+                    "save": False,
+                }
+
+    # --- Manual path ---
     # 1. How the agent starts — auto-detect from configs/manifests first, then
     #    offer "custom", so nobody stares at a blank prompt.
     command, url = _choose_target(console, cwd, prompt_ask)
@@ -120,4 +147,4 @@ def run_wizard(console, *, prompt_ask, confirm_ask, cwd: Path | None = None) -> 
         "Save these settings (command + LLM choice, never credentials) to .gaslight.json?",
         default=True,
     )
-    return {"command": command, "url": url, "env": env, "llm": llm, "save": save}
+    return {"mode": "manual", "command": command, "url": url, "env": env, "llm": llm, "save": save}

@@ -79,16 +79,45 @@ def test_wizard_with_backend_and_ollama(tmp_path):
     assert out["save"] is False
 
 
-def test_wizard_offers_and_picks_autodetected_target(tmp_path):
-    # a project .mcp.json → the wizard should offer it; picking "1" uses its
-    # exact command (no blank prompt, no typing).
+def test_wizard_auto_runs_with_detected_target(tmp_path):
+    # a project .mcp.json → Auto path returns the detected command immediately,
+    # deterministic core, no further prompts.
     (tmp_path / ".mcp.json").write_text('{"mcpServers": {"srv": {"command": "npx", "args": ["-y", "pkg"]}}}')
     out = run_wizard(
         _Console(),
-        prompt_ask=_prompt(["1", "off"]),  # pick target #1 · llm off
-        confirm_ask=_confirm([False, True]),
+        prompt_ask=_prompt(["a"]),  # Auto
+        confirm_ask=_confirm([]),
         cwd=tmp_path,
     )
+    assert out["mode"] == "auto"
+    assert out["command"] == ["npx", "-y", "pkg"]
+    assert out["llm"] == "scripted"
+
+
+def test_wizard_manual_picks_detected_target(tmp_path):
+    # Choosing Manual still offers the detected target as option 1.
+    (tmp_path / ".mcp.json").write_text('{"mcpServers": {"srv": {"command": "npx", "args": ["-y", "pkg"]}}}')
+    out = run_wizard(
+        _Console(),
+        prompt_ask=_prompt(["m", "1", "off"]),  # manual · pick #1 · llm off
+        confirm_ask=_confirm([False, True]),  # backend? no · save? yes
+        cwd=tmp_path,
+    )
+    assert out["mode"] == "manual"
+    assert out["command"] == ["npx", "-y", "pkg"]
+
+
+def test_wizard_force_manual_skips_auto_choice(tmp_path):
+    # The Auto-failed fallback re-enters with force_manual — no auto/manual prompt.
+    (tmp_path / ".mcp.json").write_text('{"mcpServers": {"srv": {"command": "npx", "args": ["-y", "pkg"]}}}')
+    out = run_wizard(
+        _Console(),
+        prompt_ask=_prompt(["1", "off"]),  # straight to target pick · llm off
+        confirm_ask=_confirm([False, True]),
+        cwd=tmp_path,
+        force_manual=True,
+    )
+    assert out["mode"] == "manual"
     assert out["command"] == ["npx", "-y", "pkg"]
 
 

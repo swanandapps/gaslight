@@ -80,36 +80,59 @@ def _running_in_targets_env(command) -> bool:
         return False
 
 
+def _spec_from_settings(settings, env):
+    """Build a TargetSpec from a wizard result."""
+    if settings.get("url"):
+        return TargetSpec(url=settings["url"])
+    merged_env = {**env, **(settings.get("env") or {})}
+    return TargetSpec(command=settings["command"], env=merged_env or None)
+
+
+def _interactive() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
 def _resolve_target_without_args(env, llm, console):
     """Resolve a target when neither --command nor --url was given: a saved
     .gaslight.json first, then the interactive setup wizard (only in a real
-    terminal). Returns (TargetSpec | None, llm). None means "give up, show the
-    plain error" — the correct behavior for CI / non-interactive use."""
+    terminal). Returns (TargetSpec | None, llm, from_auto). `from_auto` is True
+    when the wizard's Auto path picked the target — the caller then falls back to
+    the manual wizard if that target won't start. None spec = "give up, show the
+    plain error" (correct for CI / non-interactive)."""
     cwd = Path.cwd()
     cfg = load_config(cwd)
     if cfg and (cfg.get("command") or cfg.get("url")):
         cfg_llm = llm if llm is not None else cfg.get("llm")
         console.print("[dim]Using target from .gaslight.json[/]")
         if cfg.get("url"):
-            return TargetSpec(url=cfg["url"]), cfg_llm
-        return TargetSpec(command=list(cfg["command"]), env=env or None), cfg_llm
+            return TargetSpec(url=cfg["url"]), cfg_llm, False
+        return TargetSpec(command=list(cfg["command"]), env=env or None), cfg_llm, False
 
-    if sys.stdin.isatty() and sys.stdout.isatty():
+    if _interactive():
         from rich.prompt import Confirm, Prompt
 
         settings = run_wizard(console, prompt_ask=Prompt.ask, confirm_ask=Confirm.ask, cwd=cwd)
-        merged_env = {**env, **(settings.get("env") or {})}
         chosen_llm = llm if llm is not None else settings.get("llm")
         if settings.get("save"):
             saved = save_config(
                 cwd, {"command": settings.get("command"), "url": settings.get("url"), "llm": settings["llm"]}
             )
             console.print(f"[dim]Saved to {saved.name} — next time just run `gaslight`.[/]")
-        if settings.get("url"):
-            return TargetSpec(url=settings["url"]), chosen_llm
-        return TargetSpec(command=settings["command"], env=merged_env or None), chosen_llm
+        return _spec_from_settings(settings, env), chosen_llm, settings.get("mode") == "auto"
 
-    return None, llm
+    return None, llm, False
+
+
+def _manual_fallback(env, console):
+    """After Auto fails to start the target, re-run the wizard forced to Manual
+    so the user can correct the command / add a test backend. Returns
+    (TargetSpec, llm)."""
+    from rich.prompt import Confirm, Prompt
+
+    settings = run_wizard(
+        console, prompt_ask=Prompt.ask, confirm_ask=Confirm.ask, cwd=Path.cwd(), force_manual=True
+    )
+    return _spec_from_settings(settings, env), settings.get("llm")
 from gaslight.core.scorer import grade
 from gaslight.core.sink import Sink
 from gaslight.core.attacks.base import Finding
@@ -408,6 +431,7 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
         key, value = pair.split("=", 1)
         env[key] = value
 
+    auto_from_wizard = False
     if args.url:
         spec = TargetSpec(url=args.url)
     elif args.command:
@@ -415,7 +439,7 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     else:
         # No target given. Try a saved .gaslight.json, then (if interactive) the
         # setup wizard, then fall back to the plain error for CI/non-tty.
-        spec, args.llm = _resolve_target_without_args(env, args.llm, console)
+        spec, args.llm, auto_from_wizard = _resolve_target_without_args(env, args.llm, console)
         if spec is None:
             console.print(
                 "[red]error:[/] no target given. Run [bold]gaslight -- <command>[/] (e.g. "
@@ -432,63 +456,61 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
             "[bold]uvx gaslight …[/] (see the README)."
         )
 
+    skip = {k.strip() for k in args.skip.split(",") if k.strip()}
+    attacks = _build_attacks(safe=args.safe, skip=skip)
+
+    # Discovery uses its own short-lived connection, closed before any attack
+    # runs — it only needs the tool/resource list for the banner and the static
+    # surface pass. Its stderr is captured so a launch failure becomes a plain
+    # diagnosis (core/doctor.py), not a raw traceback. If the wizard's Auto path
+    # chose the target and it won't start, drop into the manual wizard once and
+    # retry — "try setting it up per your project".
+    tool_count = 0
+    discovered_tools: list = []
+    surface: list = []
+    while True:
+        discovery = TargetConnection(spec, capture_stderr=True)
+        try:
+            async with discovery as target:
+                console.print(
+                    f"[bold cyan]🔍  Found your agent[/]  ·  {len(target.tools)} tool(s): "
+                    f"{', '.join(target.tool_names())}"
+                )
+                tool_count = len(target.tools)
+                discovered_tools = list(target.tools)
+                surface = scan_surface(target.tools, target.resources)
+            break
+        except TargetUnreachable as exc:
+            console.print(f"[bold red]✗  couldn't start the target[/] — {exc}")
+            hints = diagnose_launch(f"{exc}\n{discovery.stderr_text}", spec)
+            if hints:
+                console.print("\n[yellow]Likely cause:[/]")
+                for hint in hints:
+                    console.print(f"  • {hint}")
+            tail = stderr_tail(discovery.stderr_text)
+            if tail:
+                console.print("\n[dim]last output from the target:[/]")
+                for line in tail:
+                    console.print(f"  [dim]{escape(line)}[/]")
+            if auto_from_wizard and _interactive():
+                console.print("\n[yellow]Auto couldn't start your agent — let's set it up manually.[/]")
+                spec, args.llm = _manual_fallback(env, console)
+                auto_from_wizard = False
+                continue
+            return 2
+
+    # The optional LLM layer, resolved after discovery (it isn't needed to
+    # connect). One short line; off by default.
     try:
         provider = detect_provider(args.llm)
     except NoProviderAvailable as exc:
         console.print(f"[red]error:[/] {exc}")
         return 2
-
-    # One short, plain line about the optional LLM layer — off by default, one
-    # flag to turn on. (It never decides a verdict; see docs/AGENTS.md.)
     llm_active = llm_is_active(provider)
     if llm_active:
         console.print(f"[green]🧠  LLM on[/] ({provider.name}) — richer report; it never decides a verdict.")
     else:
         console.print("[dim]🧠  LLM off — deterministic core. Want richer output? add `--llm ollama` (free, local).[/]")
-
-    skip = {k.strip() for k in args.skip.split(",") if k.strip()}
-    attacks = _build_attacks(safe=args.safe, skip=skip)
-
-    # Discovery uses its own short-lived connection, closed before any attack
-    # runs — it only needs the tool/resource list for the banner and the
-    # static surface pass (zero calls, schema-only — see core/surface.py).
-    # Capture the target's own startup output on this one connection, so a
-    # launch failure becomes a plain-language diagnosis (see core/doctor.py)
-    # rather than a wall of someone else's traceback. Constructed separately
-    # from the `async with` so its stderr is still readable after __aenter__
-    # raises.
-    discovery = TargetConnection(spec, capture_stderr=True)
-    try:
-        async with discovery as target:
-            console.print(
-                f"[bold cyan]🔍  Found your agent[/]  ·  {len(target.tools)} tool(s): "
-                f"{', '.join(target.tool_names())}"
-            )
-            tool_count = len(target.tools)
-            # Kept past the connection close: the blast radius needs the tool
-            # list to know which reaches exist at all, and each attack gets its
-            # own fresh connection after this one is gone.
-            discovered_tools = list(target.tools)
-            surface = scan_surface(target.tools, target.resources)
-    except TargetUnreachable as exc:
-        # Expected outcome, not a crash. Diagnose why it wouldn't start and
-        # give the user one concrete next step.
-        console.print(f"[bold red]✗  couldn't start the target[/] — {exc}")
-        # Diagnose from the target's own startup output AND the exception text:
-        # a crash that writes to stderr (missing credential) shows up in the
-        # former, while a failure with no output (bad command -> FileNotFound)
-        # only shows up in the latter.
-        hints = diagnose_launch(f"{exc}\n{discovery.stderr_text}", spec)
-        if hints:
-            console.print("\n[yellow]Likely cause:[/]")
-            for hint in hints:
-                console.print(f"  • {hint}")
-        tail = stderr_tail(discovery.stderr_text)
-        if tail:
-            console.print("\n[dim]last output from the target:[/]")
-            for line in tail:
-                console.print(f"  [dim]{escape(line)}[/]")
-        return 2
 
     # Rug-pull guard (see core/baseline.py). Record on first sight, compare
     # afterwards — drift rides into the report as WARN-level surface findings,
