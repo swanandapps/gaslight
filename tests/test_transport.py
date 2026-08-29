@@ -103,3 +103,62 @@ async def test_raises_when_neither_transport_connects(monkeypatch):
     conn = TargetConnection(TargetSpec(url="http://host/mcp"))
     with pytest.raises(RuntimeError, match="Streamable HTTP then SSE"):
         await conn._detect_http_transport("http://host/mcp")
+
+
+# --- transparent recovery: repair malformed tool schemas in flight ---
+
+from gaslight.core.target import _normalize_tool_schemas  # noqa: E402
+
+
+class _Node:
+    """Mirror the SessionMessage -> .message -> .root -> .result attribute chain
+    the normalizer walks, without depending on SDK internals."""
+
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def _tools_msg(tools):
+    return _Node(message=_Node(root=_Node(result={"tools": tools})))
+
+
+def _schema_of(msg, i=0, key="inputSchema"):
+    return msg.message.root.result["tools"][i][key]
+
+
+def test_injects_missing_type_like_obsidian():
+    # obsidian's real shape: an inputSchema that's only {"$schema": "...draft-07..."}
+    m = _tools_msg([{"name": "a", "inputSchema": {"$schema": "http://json-schema.org/draft-07/schema#"}}])
+    _normalize_tool_schemas(m)
+    assert _schema_of(m)["type"] == "object"
+
+
+def test_never_overwrites_a_declared_type():
+    m = _tools_msg([{"name": "a", "inputSchema": {"type": "array"}}])
+    _normalize_tool_schemas(m)
+    assert _schema_of(m)["type"] == "array"  # a compliant server's declaration is preserved
+
+
+def test_normalizes_both_casings_and_output_schema():
+    m = _tools_msg([{"name": "a", "input_schema": {}, "outputSchema": {}}])
+    _normalize_tool_schemas(m)
+    assert _schema_of(m, key="input_schema")["type"] == "object"
+    assert _schema_of(m, key="outputSchema")["type"] == "object"
+
+
+def test_tolerates_odd_tool_shapes_without_crashing():
+    # inputSchema absent, null, or a non-dict must not raise.
+    m = _tools_msg([{"name": "a"}, {"name": "b", "inputSchema": None}, {"name": "c", "inputSchema": "nope"}, "junk"])
+    assert _normalize_tool_schemas(m) is m  # returns the message, no exception
+
+
+def test_leaves_non_tools_messages_untouched():
+    m = _Node(message=_Node(root=_Node(result={"content": [{"type": "text", "text": "hi"}]})))
+    before = m.message.root.result["content"][0].copy()
+    _normalize_tool_schemas(m)
+    assert m.message.root.result["content"][0] == before  # a tool-call result is not a tool list
+
+
+def test_handles_message_with_no_result():
+    m = _Node(message=_Node(root=_Node()))  # e.g. a request/notification, no result
+    assert _normalize_tool_schemas(m) is m

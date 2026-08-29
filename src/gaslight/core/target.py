@@ -21,6 +21,8 @@ from typing import Any
 
 import logging
 
+import anyio
+
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
@@ -51,6 +53,38 @@ def _ensure_both_cases(obj: object, snake: str, camel: str, default: object = No
                 object.__setattr__(obj, name, val)
             except Exception:
                 pass
+
+
+def _normalize_tool_schemas(message: object) -> object:
+    """Repair a tools/list response in flight so a technically-invalid-but-
+    harmless server schema doesn't make the strict MCP client reject the whole
+    tool list — and gaslight can still scan it.
+
+    Some real servers (found in the wild: mcp-obsidian) return a tool
+    `inputSchema` that omits the JSON-Schema `type` (e.g. just
+    `{"$schema": "...draft-07..."}`). The MCP client's model requires it and
+    fails the entire ListToolsResult, so the connection dies. Here — at the
+    transport layer, BEFORE that validation — the result is still a raw mutable
+    dict, so we inject the obvious `"type": "object"` into any tool schema that
+    lacks it. Every non-tools/list message is returned untouched, and a
+    well-formed schema is a no-op. We add the missing field, never overwrite a
+    present one — so this never changes what a compliant server declared."""
+    root = getattr(message, "message", None) or message
+    payload = getattr(root, "root", root)
+    result = getattr(payload, "result", None)
+    if not isinstance(result, dict):
+        return message
+    tools = result.get("tools")
+    if not isinstance(tools, list):
+        return message
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        for key in ("inputSchema", "input_schema", "outputSchema", "output_schema"):
+            schema = tool.get(key)
+            if isinstance(schema, dict) and "type" not in schema:
+                schema["type"] = "object"
+    return message
 
 
 def _leaf_error(exc: BaseException) -> str:
@@ -324,10 +358,13 @@ class TargetConnection:
                     )
                     errlog = self._errlog
                 read, write = await self._stack.enter_async_context(stdio_client(params, errlog=errlog))
-                session = await self._stack.enter_async_context(ClientSession(read, write))
-                await session.initialize()
             else:  # http — Streamable HTTP first, falling back to the older SSE
-                session = await self._connect_http()
+                read, write = await self._connect_http()
+            # Repair malformed tool schemas in flight so a spec-noncompliant (but
+            # harmless) server can still be scanned instead of rejected wholesale.
+            read = await self._wrap_read_normalizing(read)
+            session = await self._stack.enter_async_context(ClientSession(read, write))
+            await session.initialize()
             listed = await session.list_tools()
         except Exception as exc:
             # A target that won't start (missing credentials, bad command,
@@ -356,20 +393,49 @@ class TargetConnection:
 
         return Target(session=session, tools=_normalize_tools(listed.tools), spec=self._spec, resources=resources)
 
-    async def _connect_http(self) -> ClientSession:
-        """Connect to a remote MCP URL, auto-detecting the transport — the caller
-        only supplies a URL and shouldn't have to know whether its server speaks
-        the current Streamable HTTP or the older HTTP+SSE. The transport is
-        detected once per URL (cached), then opened on the connection's main
-        stack like any other transport."""
+    async def _connect_http(self):
+        """Open a remote MCP URL and return its (read, write) streams,
+        auto-detecting the transport — the caller only supplies a URL and
+        shouldn't have to know whether its server speaks the current Streamable
+        HTTP or the older HTTP+SSE. The transport is detected once per URL
+        (cached), then opened on the connection's main stack."""
         assert self._spec.url is not None
         url = self._spec.url
         opener = _URL_TRANSPORT.get(url) or await self._detect_http_transport(url)
         streams = await self._stack.enter_async_context(opener(url))
-        read, write = streams[0], streams[1]  # SSE yields (r, w); Streamable HTTP (r, w, id)
-        session = await self._stack.enter_async_context(ClientSession(read, write))
-        await session.initialize()
-        return session
+        return streams[0], streams[1]  # SSE yields (r, w); Streamable HTTP (r, w, id)
+
+    async def _wrap_read_normalizing(self, read):
+        """Return a read stream that runs every incoming message through
+        `_normalize_tool_schemas` before the MCP client sees it, so a malformed
+        tool schema is repaired in flight rather than sinking the connection.
+
+        A small pump task copies source → (normalize) → a fresh memory stream,
+        started on the connection's own stack. Teardown cancels the pump before
+        the transport closes, so the pump unblocks from `read` cleanly — the same
+        enter/exit-in-one-task discipline the transport code follows."""
+        send, recv = anyio.create_memory_object_stream(256)
+        task_group = anyio.create_task_group()
+        await task_group.__aenter__()
+
+        async def pump() -> None:
+            try:
+                async for message in read:
+                    await send.send(_normalize_tool_schemas(message))
+            finally:
+                await send.aclose()
+
+        task_group.start_soon(pump)
+
+        async def _stop() -> None:
+            task_group.cancel_scope.cancel()
+            try:
+                await task_group.__aexit__(None, None, None)
+            except BaseException:  # noqa: BLE001 - best-effort teardown, never mask the real result
+                pass
+
+        self._stack.push_async_callback(_stop)
+        return recv
 
     async def _detect_http_transport(self, url: str):
         """Probe Streamable HTTP first, then SSE, inside a fully-structured

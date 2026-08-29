@@ -38,7 +38,9 @@ def _finding_fired(html: str, key: str) -> bool:
     return (
         re.search(
             rf'<div class="finding fired">\s*<div class="finding-head">'
-            rf'<span class="k">CONFIRMED</span><span class="on">{re.escape(key)}\b',
+            rf'<span class="k">CONFIRMED</span>'
+            rf'(?:<span class="badge sev-\w+">\w+</span>)?'  # severity badge (added later)
+            rf'<span class="on">{re.escape(key)}\b',
             html,
         )
         is not None
