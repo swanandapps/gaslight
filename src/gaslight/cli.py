@@ -228,7 +228,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--url",
-        help="Connect to a remote MCP server over HTTP+SSE instead of spawning a local process",
+        help=(
+            "Connect to a remote MCP server over HTTP instead of spawning a local process. "
+            "The transport is auto-detected — Streamable HTTP (current) or the older HTTP+SSE."
+        ),
     )
     parser.add_argument(
         "--llm",

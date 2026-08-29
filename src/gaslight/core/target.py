@@ -19,9 +19,20 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from typing import Any
 
+import logging
+
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamable_http_client
+
+# The Streamable HTTP client logs a traceback when a connection is torn down
+# mid-SSE-message — which gaslight triggers constantly, opening a fresh
+# short-lived connection per attack (17+ a scan). It's a benign teardown race,
+# never actionable, so quiet that one background logger to keep scan output
+# clean. Real connect failures surface as exceptions on initialize(), caught and
+# turned into TargetUnreachable — never through this logger.
+logging.getLogger("mcp.client.streamable_http").setLevel(logging.CRITICAL)
 
 
 def _ensure_both_cases(obj: object, snake: str, camel: str, default: object = None) -> None:
@@ -40,6 +51,27 @@ def _ensure_both_cases(obj: object, snake: str, camel: str, default: object = No
                 object.__setattr__(obj, name, val)
             except Exception:
                 pass
+
+
+def _leaf_error(exc: BaseException) -> str:
+    """A readable one-liner for an exception that anyio may have wrapped in a
+    (Base)ExceptionGroup — dig to the first leaf so a connect failure reads as
+    'ConnectError: ...' rather than 'BaseExceptionGroup: unhandled errors in a
+    TaskGroup'. Duck-types on `.exceptions` so it needs no ExceptionGroup import
+    (which isn't a builtin before 3.11)."""
+    seen: BaseException = exc
+    for _ in range(6):
+        subs = getattr(seen, "exceptions", None)
+        if not subs:
+            break
+        seen = subs[0]
+    return f"{type(seen).__name__}: {seen}"
+
+
+# Remembers which HTTP transport a URL actually spoke, so a scan (which opens a
+# fresh connection per attack, 17+ times) detects it once and then connects
+# straight to the known transport — no re-probing, no repeated fallback.
+_URL_TRANSPORT: dict[str, object] = {}
 
 
 def _normalize_tools(tools: list[types.Tool]) -> list[types.Tool]:
@@ -145,7 +177,9 @@ class TargetSpec:
     """A local process to spawn and speak MCP with over stdio."""
 
     url: str | None = None
-    """A remote MCP server reachable over HTTP+SSE."""
+    """A remote MCP server reachable over HTTP — Streamable HTTP (the current
+    transport) or the older HTTP+SSE. Which one is auto-detected at connect
+    time; the caller only supplies the URL."""
 
     env: dict[str, str] | None = None
 
@@ -154,7 +188,7 @@ class TargetSpec:
         if self.command:
             return "stdio"
         if self.url:
-            return "sse"
+            return "http"
         raise ValueError("TargetSpec needs either `command` or `url`")
 
     @property
@@ -290,14 +324,10 @@ class TargetConnection:
                     )
                     errlog = self._errlog
                 read, write = await self._stack.enter_async_context(stdio_client(params, errlog=errlog))
-            elif self._spec.transport == "sse":
-                assert self._spec.url is not None
-                read, write = await self._stack.enter_async_context(sse_client(self._spec.url))
-            else:  # pragma: no cover - guarded by TargetSpec.transport
-                raise ValueError(f"unsupported transport: {self._spec.transport}")
-
-            session = await self._stack.enter_async_context(ClientSession(read, write))
-            await session.initialize()
+                session = await self._stack.enter_async_context(ClientSession(read, write))
+                await session.initialize()
+            else:  # http — Streamable HTTP first, falling back to the older SSE
+                session = await self._connect_http()
             listed = await session.list_tools()
         except Exception as exc:
             # A target that won't start (missing credentials, bad command,
@@ -325,6 +355,42 @@ class TargetConnection:
             resources = []
 
         return Target(session=session, tools=_normalize_tools(listed.tools), spec=self._spec, resources=resources)
+
+    async def _connect_http(self) -> ClientSession:
+        """Connect to a remote MCP URL, auto-detecting the transport — the caller
+        only supplies a URL and shouldn't have to know whether its server speaks
+        the current Streamable HTTP or the older HTTP+SSE. The transport is
+        detected once per URL (cached), then opened on the connection's main
+        stack like any other transport."""
+        assert self._spec.url is not None
+        url = self._spec.url
+        opener = _URL_TRANSPORT.get(url) or await self._detect_http_transport(url)
+        streams = await self._stack.enter_async_context(opener(url))
+        read, write = streams[0], streams[1]  # SSE yields (r, w); Streamable HTTP (r, w, id)
+        session = await self._stack.enter_async_context(ClientSession(read, write))
+        await session.initialize()
+        return session
+
+    async def _detect_http_transport(self, url: str):
+        """Probe Streamable HTTP first, then SSE, inside a fully-structured
+        `async with` so a failed attempt's anyio cancel scope unwinds cleanly (a
+        split enter/exit leaks TaskGroup teardown noise). Returns the opener that
+        connected and remembers it for `url`; raises if neither did."""
+        attempts = [("Streamable HTTP", streamable_http_client), ("SSE", sse_client)]
+        errors: list[str] = []
+        for name, opener in attempts:
+            try:
+                async with opener(url) as streams:
+                    async with ClientSession(streams[0], streams[1]) as session:
+                        await session.initialize()
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except BaseException as exc:  # noqa: BLE001 - anyio wraps connect failures in an ExceptionGroup
+                errors.append(f"{name}: {_leaf_error(exc)}")
+                continue
+            _URL_TRANSPORT[url] = opener
+            return opener
+        raise RuntimeError("tried Streamable HTTP then SSE — " + " | ".join(errors))
 
     async def _close_quietly(self, exc: BaseException) -> None:
         """Unwind whatever part of the connection did open, swallowing the
