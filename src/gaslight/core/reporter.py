@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from gaslight.core.attacks.base import Finding
 from gaslight.core.blast import BlastZone, blast_geometry, blast_headline
-from gaslight.core.education import CLEAN_LINE, FIX_HINT
+from gaslight.core.education import CLEAN_LINE, FIX_HINT, SECURITY_LINKS, SECURITY_TIPS
 from gaslight.core.metrics import MetricResult
 from gaslight.core.scorer import GradeResult, severity_of
 from gaslight.core.secrets_scan import find_secret_like_strings, mask_secret
@@ -110,15 +110,6 @@ def print_terminal(
         else:
             console.print(f"[green]✅  No leak[/]  ({finding.attack_key}) — {escape(finding.reason)}")
 
-    if metrics:
-        parts = []
-        for m in metrics:
-            color = _BAND_COLOR.get(m.band, "white")
-            parts.append(f"[{color}]{escape(m.name)} {m.display}[/]")
-        avg_clause = f"  ·  avg {metrics_avg}/100" if metrics_avg is not None else ""
-        console.print()
-        console.print("  ".join(parts) + avg_clause)
-
     for verdict in verdicts or []:
         color = _VERDICT_COLOR.get(verdict.label, "white")
         console.print(f"[{color}]{verdict.label}[/] ({verdict.tool_name}) — {verdict.detail}")
@@ -137,9 +128,99 @@ def print_terminal(
             on = f" ({escape(s.tool_name)})" if s.tool_name else ""
             console.print(f"[{color}]⚠ {tag} ({s.category})[/]{on} — {escape(s.message)}")
 
-    color = _GRADE_COLOR.get(grade_result.grade, "white")
+
+# band -> (icon, style) for the per-area result rows.
+_AREA_ICON = {"green": ("✓", "green"), "orange": ("!", "yellow"), "red": ("✗", "bold red"), "na": ("–", "grey42")}
+
+
+def _truncate_names(names: list[str], keep: int = 5) -> str:
+    if len(names) <= keep:
+        return ", ".join(names)
+    return ", ".join(names[:keep]) + f", … +{len(names) - keep} more"
+
+
+def print_climax(
+    console: Console,
+    *,
+    tool_names: list[str],
+    grade_result: GradeResult,
+    metrics: list[MetricResult] | None,
+    metrics_avg: int | None,
+    findings: list[Finding],
+    surface: list[SurfaceFinding] | None,
+    llm_active: bool,
+    model_driven_attempted: bool,
+    report_path: str,
+) -> None:
+    """The end-of-run results screen — the climax. A bold, colour-graded verdict,
+    a per-area breakdown of what was checked, honest coverage (how much of the
+    agent we reached and why the rest was skipped), what to do next, and a short
+    hardening checklist. Everything a user needs to act, without opening the HTML."""
+    from rich.panel import Panel
+    from rich.text import Text
+
+    grade = grade_result.grade
+    gcolor = _GRADE_COLOR.get(grade, "white")
+    fired = grade_result.fired_count
+
+    # 1. Graded verdict — the thing that must land at a glance.
+    body = Text()
+    body.append("GRADE  ", style="bold")
+    body.append(grade, style=f"bold {gcolor}")
+    body.append(f"\n{grade_result.summary}", style="dim")
     console.print()
-    console.print(f"[{color}]Grade: {grade_result.grade}[/]  ·  {grade_result.summary}")
+    console.print(Panel(body, border_style=gcolor, title="result", title_align="left", padding=(0, 2)))
+
+    # 2. Per-area breakdown — what we checked, and which attacks broke through.
+    if metrics:
+        console.print("\n[bold]Checked across 5 areas[/]")
+        for m in metrics:
+            icon, color = _AREA_ICON.get(m.band, ("·", "white"))
+            failed = list(dict.fromkeys(a.attack_key for a in m.audits if a.outcome == "fail"))
+            ran = [a for a in m.audits if a.outcome != "na"]
+            if m.band == "na":
+                note = "not applicable — this agent has no tool of that shape"
+            elif failed:
+                note = f"{len(failed)} broke through: " + ", ".join(failed)
+            else:
+                note = f"{len(ran)} check{'s' if len(ran) != 1 else ''} held"
+            console.print(f"  [{color}]{icon} {m.name:<13}{m.display:>4}[/]  [dim]{note}[/]")
+        if metrics_avg is not None:
+            console.print(f"  [dim]  {'overall':<13}{metrics_avg:>4}[/]")
+
+    # 3. Coverage — how much of the agent we actually reached, by tool.
+    tested = [f for f in findings if f.attempted]
+    skipped = [f for f in findings if not f.attempted]
+    backend_skips = [f for f in skipped if "backend" in f.reason.lower() or "could not connect" in f.reason.lower()]
+    notool_skips = [f for f in skipped if f not in backend_skips]
+    pct = round(100 * len(tested) / len(findings)) if findings else 0
+    console.print(f"\n[bold]Coverage[/]  ·  tested [bold]{len(tested)} of {len(findings)}[/] checks  ·  [bold]{pct}%[/]")
+    if tool_names:
+        console.print(f"  [dim]Your agent's tools ({len(tool_names)}): {_truncate_names(tool_names)}[/]")
+    if notool_skips:
+        console.print(f"  [dim]⊘  {len(notool_skips)} don't apply — this agent has no matching tool for them.[/]")
+    if backend_skips:
+        console.print(f"  [yellow]⊘  {len(backend_skips)} couldn't run — a tool's backend was unreachable.[/]")
+        console.print("     [yellow]→ start a test backend and re-run with [bold]--env KEY=VALUE[/] (throwaway creds) to cover them.[/]")
+
+    # 4. The report link + what to do next.
+    console.print(f"\n[bold]📋  Full report:[/]  {report_path}  [dim](open it in your browser)[/]")
+    console.print("[bold]What to do next[/]")
+    if fired or (surface and any(s.severity == "warn" for s in surface)):
+        console.print(f"  [cyan]🤖  {FIX_HINT}[/]")
+    else:
+        console.print(f"  [green]✓  {CLEAN_LINE}[/]")
+    if not llm_active and model_driven_attempted:
+        console.print(
+            "  [cyan]📈  Add [bold]--llm ollama[/] (free, local) to test the model-based attacks with a real model.[/]"
+        )
+
+    # 5. A short, honest hardening close — educational, never alarmist.
+    console.print("\n[bold]Hardening your MCP agent[/] [dim]— the basics behind these checks[/]")
+    for tip in SECURITY_TIPS:
+        console.print(f"  [dim]•[/] {tip}")
+    links = "    ".join(f"{name} [dim]{url}[/]" for name, url in SECURITY_LINKS)
+    console.print(f"  [dim]Learn more:[/]  {links}")
 
 
 _jinja_env = jinja2.Environment(autoescape=True)

@@ -56,10 +56,10 @@ def _group_by_phase(attacks):
     if buckets.get("Other"):
         ordered.append(("Other", buckets["Other"]))
     return ordered
-from gaslight.core.reporter import print_terminal, write_html_report
+from gaslight.core.reporter import print_climax, print_terminal, write_html_report
 from gaslight.core.surface import WARN, SurfaceFinding, scan_surface
 from gaslight.core.baseline import diff_baseline, load_baseline, write_baseline
-from gaslight.core.education import CLEAN_LINE, FIX_HINT, what_it_checks
+from gaslight.core.education import what_it_checks
 from gaslight.core.wizard import load_config, run_wizard, save_config
 
 
@@ -778,22 +778,6 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
         else:
             findings, backend_down = await _run_plain(console, spec, provider, sink, phases)
 
-    # Coverage, made visible: what ran, what didn't, why, and how to fix it.
-    tested = [f for f in findings if f.attempted]
-    skipped = [f for f in findings if not f.attempted]
-    backend_skips = [f for f in skipped if "backend" in f.reason.lower() or "could not connect" in f.reason.lower()]
-    notool_skips = [f for f in skipped if f not in backend_skips]
-    console.print()
-    coverage = f"[bold]Coverage:[/] tested {len(tested)} of {len(findings)} checks."
-    if skipped:
-        reasons = []
-        if notool_skips:
-            reasons.append(f"{len(notool_skips)} don't apply (no matching tool)")
-        if backend_skips:
-            reasons.append(f"{len(backend_skips)} a backend was unreachable")
-        coverage += f" [dim]{len(skipped)} not tested: {' · '.join(reasons)}.[/]"
-    console.print(coverage)
-
     ai_hints: list[str] = []
     if args.classify_secrets and llm_active:
         try:
@@ -824,38 +808,23 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
         Path(args.output), spec.label, findings, grade_result, verdicts, ai_hints,
         metrics=metrics, metrics_avg=metrics_avg, tool_count=tool_count, surface=surface, blast=blast,
     )
-    console.print(f"\n[bold]📋  Your report card:[/] {report_path} [dim](open it in your browser)[/]")
-
-    # Two honest, distinct ways to get a stronger report — shown only when each
-    # actually applies. They are NOT the same knob: --env widens COVERAGE (lets
-    # backend-needing tools run); --llm raises REALISM (a real model instead of
-    # the scripted stand-in drives the model-based attacks). We only suggest the
-    # LLM when a model-driven attack actually ran — otherwise it would change
-    # nothing on this target, and gaslight doesn't sell upgrades that do nothing.
-    upgrades: list[str] = []
-    if backend_skips:
-        upgrades.append(
-            f"[yellow]Broader coverage[/] — {len(backend_skips)} check(s) couldn't run because a tool's "
-            "backend was unreachable. Start a test backend and re-run with [bold]--env KEY=VALUE[/] "
-            "(throwaway creds, never production)."
-        )
-    if not llm_active and any(f.attack_key in _MODEL_DRIVEN and f.attempted for f in findings):
-        upgrades.append(
-            "[cyan]More realistic[/] — this report used the deterministic core (no LLM). Add "
-            "[bold]--llm ollama[/] (free, local) to drive the model-based attacks with a real model "
-            "instead of the scripted stand-in."
-        )
-    if upgrades:
-        console.print("\n[bold]Make this report stronger:[/]")
-        for line in upgrades:
-            console.print(f"  • {line}")
-
-    # Personality + the AI-first fix loop: gaslight finds and proves it; the
-    # user's own agent fixes it. A clean run gets a friendly win instead.
-    if grade_result.fired_count > 0 or any(s.severity == "warn" for s in surface):
-        console.print(f"\n[cyan]🤖  {FIX_HINT}[/]")
-    else:
-        console.print(f"\n[green]✓  {CLEAN_LINE}[/]")
+    # The climax — a bold graded verdict, the per-area breakdown, honest coverage
+    # (by tool, with skip reasons), what to do next, and a hardening close. This
+    # is the ending; --env widens coverage, --llm only raises realism, and the LLM
+    # lever is shown only when a model-driven attack actually ran.
+    model_driven_attempted = any(f.attack_key in _MODEL_DRIVEN and f.attempted for f in findings)
+    print_climax(
+        console,
+        tool_names=[t.name for t in discovered_tools],
+        grade_result=grade_result,
+        metrics=metrics,
+        metrics_avg=metrics_avg,
+        findings=findings,
+        surface=surface,
+        llm_active=llm_active,
+        model_driven_attempted=model_driven_attempted,
+        report_path=str(report_path),
+    )
 
     if args.json:
         llm_info = {

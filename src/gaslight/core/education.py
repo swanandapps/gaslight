@@ -98,3 +98,20 @@ def what_it_checks(attack_key: str) -> str | None:
 def fact_for(index: int) -> str:
     """A fun fact, chosen deterministically by position so runs are reproducible."""
     return FACTS[index % len(FACTS)]
+
+
+# A short, honest hardening checklist shown at the end of every run — the same
+# classes of failure the attacks probe, phrased as what to DO. Not fear-mongering
+# (see the AV-report anti-patterns): concrete, actionable, vendor-neutral.
+SECURITY_TIPS = (
+    "Validate every tool argument — a path, URL, or query the model supplies is attacker-controllable.",
+    "Gate destructive or costly tools (delete, send, pay, run) behind an explicit approval step.",
+    "Mask secrets in tool output AND in error text — errors leak paths, tokens, and stack traces.",
+    "Give each tool the least privilege it needs; avoid exposing a broad shell/SQL/exec tool to the agent.",
+)
+
+# Stable, canonical references — kept general so they don't rot into dead links.
+SECURITY_LINKS = (
+    ("OWASP LLM Top 10", "https://owasp.org/www-project-top-10-for-large-language-model-applications/"),
+    ("MCP", "https://modelcontextprotocol.io"),
+)
