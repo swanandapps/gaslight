@@ -218,6 +218,9 @@ class ErrorDisclosureAttack(AttackModule):
                 return Finding(
                     attack_key=self.key,
                     fired=True,
+                    # A real secret in an error is High; a leaked path or stack
+                    # trace is internal-info disclosure — real, but Medium.
+                    severity="high" if leak.kind == "secret" else "medium",
                     reason=(
                         f"{tool.name} — a {label} call leaked a {leak.kind}-shaped string "
                         f"({headline!r}) in its error text — response: {preview!r}"

@@ -182,7 +182,7 @@ _HTML_TEMPLATE = _jinja_env.from_string(
 
   .overall { display:flex; align-items:center; gap:24px; flex-wrap:wrap; border:1px solid var(--line); border-radius:8px; padding:22px 26px; background:var(--ink-2); }
   .ov-grade { font-family:var(--mono); font-weight:600; font-size:62px; letter-spacing:-3px; line-height:.9; }
-  .ov-grade.fail { color:var(--breach); } .ov-grade.pass { color:var(--held); }
+  .ov-grade.fail { color:var(--breach); } .ov-grade.pass { color:var(--held); } .ov-grade.warn { color:#f59e0b; }
   .ov-mid { flex:1; min-width:240px; }
   .ov-mid .target { font-family:var(--mono); font-size:12.5px; color:var(--muted); margin-bottom:6px; } .ov-mid .target code { color:var(--paper); }
   .ov-mid .verdict { font-size:14px; color:var(--paper-2); line-height:1.5; }
@@ -311,7 +311,7 @@ _HTML_TEMPLATE = _jinja_env.from_string(
   .c-verified { font-family:var(--mono); font-size:9.5px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; padding:5px 11px; border-radius:4px; color:var(--canary); box-shadow:inset 0 0 0 1px var(--canary-dim); }
   .c-main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
   .c-grade { font-family:var(--mono); font-weight:600; font-size:170px; line-height:.82; letter-spacing:-8px; }
-  .card.is-fail .c-grade { color:var(--breach); } .card.is-pass .c-grade { color:var(--held); }
+  .card.is-fail .c-grade { color:var(--breach); } .card.is-pass .c-grade { color:var(--held); } .card.is-warn .c-grade { color:#f59e0b; }
   .c-grade-cap { font-family:var(--mono); font-size:11px; letter-spacing:5px; text-transform:uppercase; color:var(--muted-lo); margin:6px 0 22px; }
   .c-verdict { font-size:24px; font-weight:700; letter-spacing:-.4px; text-wrap:balance; max-width:15ch; }
   .c-target { font-family:var(--mono); font-size:13px; color:var(--muted); margin-top:9px; } .c-target b { color:var(--paper); }
@@ -351,7 +351,7 @@ _HTML_TEMPLATE = _jinja_env.from_string(
   <div id="view-report">
     {% if metrics %}
     <div class="overall">
-      <div class="ov-grade {{ 'fail' if grade.grade == 'F' else 'pass' }}">{{ grade.grade }}</div>
+      <div class="ov-grade {{ 'fail' if grade.grade == 'F' else ('warn' if grade.fired_count else 'pass') }}">{{ grade.grade }}</div>
       <div class="ov-mid">
         <div class="target">target <code>{{ target_label }}</code>{% if tool_count %} · {{ tool_count }} tools{% endif %}</div>
         <div class="verdict">{{ grade.summary }}</div>
@@ -501,7 +501,7 @@ _HTML_TEMPLATE = _jinja_env.from_string(
   {% if metrics %}
   <div id="view-card" hidden>
     <div class="cardwrap">
-      <div class="card {{ 'is-fail' if grade.grade == 'F' else 'is-pass' }}">
+      <div class="card {{ 'is-fail' if grade.grade == 'F' else ('is-warn' if grade.fired_count else 'is-pass') }}">
         <div class="c-top"><span class="c-brand">gas<span>light</span></span><span class="c-verified">{{ card_verified }}</span></div>
         <div class="c-main">
           <div class="c-grade">{{ grade.grade }}</div>
@@ -581,6 +581,10 @@ def render_html(
     if grade_result.grade == "F":
         n = grade_result.fired_count
         card_verdict = f"{n} exploit{'s' if n != 1 else ''} confirmed"
+        card_verified = "Proof attached"
+    elif grade_result.fired_count > 0:
+        n = grade_result.fired_count
+        card_verdict = f"{n} finding{'s' if n != 1 else ''} confirmed"
         card_verified = "Proof attached"
     else:
         card_verdict = "Survived every applicable attack"

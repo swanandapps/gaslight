@@ -88,6 +88,14 @@ class Finding:
     ever exercising the target (no viable surface, couldn't plant the
     payload, ...). This disambiguates `fired=False`, which can mean either
     "tested and clean" or "never tested" — see core/verdict.py."""
+    severity: str | None = None
+    """Optional per-finding severity override — "critical" | "high" | "medium".
+    Most attacks leave this None and the scorer uses the attack's default
+    severity. An attack sets it only when the SAME attack can fire at different
+    severities depending on what it found: error-disclosure leaking a real
+    secret is "high", but leaking only a filesystem path or stack trace is
+    "medium". Only meaningful when fired=True; the scorer maps the worst
+    severity across all fired findings to the letter grade."""
 
 
 class AttackModule(ABC):

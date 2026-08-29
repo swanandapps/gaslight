@@ -70,6 +70,10 @@ class ResourceExposureAttack(AttackModule):
         return Finding(
             attack_key=self.key,
             fired=fired,
+            # Actual secret-shaped content in a resource is High; a merely
+            # sensitively-NAMED resource that's ungated (no secret content
+            # proven) is a Medium hygiene gap.
+            severity="high" if secret_hits else ("medium" if sensitive_named else None),
             reason=" and ".join(reasons) if reasons else "no resource exposed anything sensitive.",
             raw_observed_text=resource_texts,
         )
