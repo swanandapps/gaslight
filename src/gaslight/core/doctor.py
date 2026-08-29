@@ -16,6 +16,20 @@ from __future__ import annotations
 
 from gaslight.core.target import TargetSpec
 
+# The launch binary itself couldn't be exec'd (no Python ever started). Named so
+# it can be suppressed when a traceback proves the server DID start (below).
+_LAUNCH_NOT_FOUND = "The launch command couldn't be found. Double-check the path to the server binary."
+
+# The server process started (there's a Python traceback) and then crashed trying
+# to open a file it expected — most often a log/db path hardcoded relative to the
+# working directory. That's a bug in the target, not in how gaslight launched it.
+_SERVER_CRASHED_ON_FILE = (
+    "The server STARTED but crashed opening a file it expected (often a log or database path it "
+    "hardcodes relative to the working directory). This is a bug in the server, not in the launch "
+    "command. Try running gaslight from the server's own project directory, or create the missing "
+    "folder/file it names above, then re-run."
+)
+
 # (substrings to match in the target's startup output, plain-language fix).
 # Ordered most-specific first; every matching rule is shown, so a server that
 # trips two (old SDK *and* missing credential) gets both.
@@ -93,7 +107,7 @@ _SIGNALS: tuple[tuple[tuple[str, ...], str], ...] = (
     ),
     (
         ("command not found", "no such file or directory", "errno 2", "enoent"),
-        "The launch command couldn't be found. Double-check the path to the server binary.",
+        _LAUNCH_NOT_FOUND,
     ),
     (
         ("permission denied", "errno 13", "eacces"),
@@ -130,8 +144,17 @@ def diagnose_launch(stderr_text: str | None, spec: TargetSpec) -> list[str]:
     from its startup output. Empty list when nothing matched — the caller
     should then fall back to a generic message plus the raw tail."""
     lowered = (stderr_text or "").lower()
+    # A Python traceback means the process actually launched and then crashed —
+    # so a "no such file" here is a file the SERVER tried to open, not a missing
+    # launch binary. Diagnose the server crash and suppress the misleading
+    # "check the path to the binary" line.
+    started = "traceback (most recent call last)" in lowered
     hints: list[str] = []
+    if started and ("filenotfounderror" in lowered or "no such file" in lowered):
+        hints.append(_SERVER_CRASHED_ON_FILE)
     for signatures, message in _SIGNALS:
+        if message is _LAUNCH_NOT_FOUND and started:
+            continue
         if any(sig in lowered for sig in signatures) and message not in hints:
             hints.append(message)
 

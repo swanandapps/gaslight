@@ -42,6 +42,22 @@ def test_bad_command_is_diagnosed():
     assert "couldn't be found" in out
 
 
+def test_server_that_crashes_opening_its_own_file_is_not_blamed_on_the_binary():
+    # Real case (mcp-vegalite-server): the server imports, then crashes because it
+    # hardcodes logging.FileHandler("logs/…") with no logs/ dir. The command was
+    # fine — a Python traceback proves the process started — so don't tell the user
+    # to check the binary path; name it as the server's own startup bug.
+    text = (
+        "Traceback (most recent call last):\n"
+        '  File "server.py", line 15, in <module>\n'
+        '    logging.FileHandler("logs/vegalite.log")\n'
+        "FileNotFoundError: [Errno 2] No such file or directory: 'logs/vegalite.log'"
+    )
+    out = _hint(text)
+    assert "bug in the server" in out
+    assert "couldn't be found" not in out  # the misleading binary-path line is suppressed
+
+
 def test_node_version_is_diagnosed():
     out = _hint("Error [ERR_UNKNOWN_BUILTIN_MODULE]: No such built-in module")
     assert "Node.js version" in out
