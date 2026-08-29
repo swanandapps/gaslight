@@ -273,11 +273,82 @@ def _scan_node_server(cwd: Path) -> list[dict]:
     return guesses
 
 
+def _go_main_package(cwd: Path) -> Path | None:
+    """The directory of the Go `package main` to run — root, else the best cmd/…
+    (one whose name looks like the server, not a helper like mcpcurl)."""
+    skip = _SKIP_DIRS | {"vendor", "examples", "example", "testdata", "scripts", "script"}
+    mains: list[Path] = []
+    for go in cwd.rglob("*.go"):
+        if any(part in skip for part in go.parts):
+            continue
+        try:
+            text = go.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if "package main" in text and "func main(" in text:
+            mains.append(go.parent)
+
+    def rank(directory: Path) -> int:
+        rel = directory.relative_to(cwd)
+        if str(rel) == ".":  # a main package at the repo root is the server
+            return 0
+        last = rel.parts[-1].lower()
+        if "cmd" in rel.parts and last == cwd.name.lower():  # cmd/<repo-name> — the canonical entry
+            return 1
+        if "cmd" in rel.parts and "server" in last:
+            return 2
+        if "cmd" in rel.parts:  # some other cmd/ helper (e.g. cmd/mcpcurl)
+            return 4
+        return 5
+
+    return min(mains, key=rank) if mains else None
+
+
+def _scan_go_server(cwd: Path) -> list[dict]:
+    """Best-guess a Go MCP server from go.mod (an mcp dependency, or an mcp-named
+    module) — run via `go run` against its main package. Needs the Go toolchain
+    present, like any Go project."""
+    gomod = cwd / "go.mod"
+    if not gomod.exists():
+        return []
+    try:
+        mod_text = gomod.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return []
+    if "mcp" not in mod_text:
+        return []
+    main_dir = _go_main_package(cwd)
+    if main_dir is None:
+        return []
+    where = "." if main_dir == cwd else "./" + str(main_dir.relative_to(cwd)).replace("\\", "/")
+    return [{"name": cwd.name, "command": ["go", "run", where], "source": f"guessed from go.mod ({where})", "guess": True}]
+
+
+def _scan_rust_server(cwd: Path) -> list[dict]:
+    """Best-guess a Rust MCP server from Cargo.toml (an mcp/rmcp dependency, or an
+    mcp-named crate) — run via `cargo run --release`. Needs the Rust toolchain."""
+    cargo = cwd / "Cargo.toml"
+    if not cargo.exists():
+        return []
+    try:
+        text = cargo.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return []
+    if "mcp" not in text and "rmcp" not in text:
+        return []
+    return [{"name": cwd.name, "command": ["cargo", "run", "--release"], "source": "guessed from Cargo.toml", "guess": True}]
+
+
 def discover_targets(cwd: Path) -> list[dict]:
     """Candidate targets: [{name, command:[...] | url, source, guess?}, …].
-    Config/manifest hits (exact) first; a bounded project scan (best guess) — both
-    Python and Node/TS — only if nothing was registered."""
+    Config/manifest hits (exact) first; a bounded project scan (best guess) —
+    Python, Node/TS, Go, Rust — only if nothing was registered."""
     found = _from_configs(cwd)
     if not found:
-        found = _scan_python_server(cwd) + _scan_node_server(cwd)
+        found = (
+            _scan_python_server(cwd)
+            + _scan_node_server(cwd)
+            + _scan_go_server(cwd)
+            + _scan_rust_server(cwd)
+        )
     return found

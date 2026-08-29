@@ -169,3 +169,35 @@ def test_main_module_runs_the_package(tmp_path):
     (tmp_path / "mypkg" / "__main__.py").write_text(_fastmcp())
     targets = discover_targets(tmp_path)
     assert targets and targets[0]["command"][-1] == "mypkg"  # `-m mypkg` runs __main__.py
+
+
+def test_finds_go_mcp_server_at_root(tmp_path):
+    (tmp_path / "go.mod").write_text("module github.com/x/my-mcp-server\nrequire github.com/mark3labs/mcp-go v0.1.0\n")
+    (tmp_path / "main.go").write_text("package main\nfunc main() {}\n")
+    t = discover_targets(tmp_path)
+    assert t and t[0]["command"] == ["go", "run", "."]
+
+
+def test_go_prefers_cmd_matching_repo_name(tmp_path):
+    proj = tmp_path / "my-server"
+    (proj / "cmd" / "my-server").mkdir(parents=True)
+    (proj / "cmd" / "helper").mkdir(parents=True)
+    (proj / "go.mod").write_text("module github.com/x/my-server\nrequire github.com/mark3labs/mcp-go v0.1.0\n")
+    (proj / "cmd" / "my-server" / "main.go").write_text("package main\nfunc main() {}\n")
+    (proj / "cmd" / "helper" / "main.go").write_text("package main\nfunc main() {}\n")
+    t = discover_targets(proj)
+    assert t and t[0]["command"] == ["go", "run", "./cmd/my-server"]
+
+
+def test_ignores_non_mcp_go_project(tmp_path):
+    (tmp_path / "go.mod").write_text("module github.com/x/just-a-cli\nrequire github.com/spf13/cobra v1.0\n")
+    (tmp_path / "main.go").write_text("package main\nfunc main() {}\n")
+    assert discover_targets(tmp_path) == []
+
+
+def test_finds_rust_mcp_server(tmp_path):
+    (tmp_path / "Cargo.toml").write_text('[package]\nname = "rust-mcp-fs"\n[dependencies]\nrmcp = "0.1"\n')
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.rs").write_text("fn main() {}\n")
+    t = discover_targets(tmp_path)
+    assert t and t[0]["command"] == ["cargo", "run", "--release"]

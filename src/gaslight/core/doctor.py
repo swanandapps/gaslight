@@ -86,6 +86,12 @@ _SIGNALS: tuple[tuple[tuple[str, ...], str], ...] = (
         "`node` (its absolute path), not whatever is first on PATH.",
     ),
     (
+        ("no such file or directory: 'go'", "no such file or directory: 'cargo'",
+         "no such file or directory: 'node'", "no such file or directory: 'npx'", "executable file not found"),
+        "The language toolchain needed to run this server isn't installed or isn't on PATH "
+        "(go / cargo / node). Install it, then re-run.",
+    ),
+    (
         ("command not found", "no such file or directory", "errno 2", "enoent"),
         "The launch command couldn't be found. Double-check the path to the server binary.",
     ),
