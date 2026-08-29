@@ -20,6 +20,11 @@ import json
 import os
 from pathlib import Path
 
+try:
+    import tomllib as _tomllib
+except ModuleNotFoundError:  # Python 3.10 ships no stdlib tomllib
+    _tomllib = None
+
 _SKIP_DIRS = {".venv", "venv", "site-packages", "node_modules", "__pycache__", ".git", "build", "dist"}
 _MAX_FILES = 3000
 
@@ -190,7 +195,112 @@ def _server_score(py: Path, text: str) -> int:
     return score
 
 
+def _pyproject_scripts(text: str) -> dict[str, str]:
+    """A pyproject.toml's `[project.scripts]` console-script entry points:
+    {script_name: "module.path:function"}. This is the AUTHORITATIVE way a
+    Python project declares how it launches — the exact analog of package.json's
+    `bin` — so we read it instead of guessing the module from source markers
+    (which miss a server that subclasses FastMCP rather than calling `FastMCP(`)."""
+    if _tomllib is not None:
+        try:
+            data = _tomllib.loads(text)
+        except (ValueError, TypeError):
+            data = None
+        if isinstance(data, dict):
+            scripts = (data.get("project") or {}).get("scripts") or {}
+            if isinstance(scripts, dict):
+                return {str(k): str(v) for k, v in scripts.items() if isinstance(v, str)}
+    # No stdlib tomllib (3.10), or a parse error: recover just the
+    # [project.scripts] table with a line scan.
+    out: dict[str, str] = {}
+    in_section = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_section = stripped == "[project.scripts]"
+            continue
+        if in_section and "=" in stripped and not stripped.startswith("#"):
+            name, _, target = stripped.partition("=")
+            name = name.strip().strip('"').strip("'")
+            target = target.strip().strip('"').strip("'")
+            if name and target:
+                out[name] = target
+    return out
+
+
+def _project_is_mcp(text: str) -> bool:
+    """Whether this pyproject describes an MCP project — mcp-named, or depending
+    on the `mcp` / `fastmcp` package. Consulted only to accept a project's lone
+    console script when its name doesn't itself say 'mcp'."""
+    if _tomllib is not None:
+        try:
+            data = _tomllib.loads(text)
+        except (ValueError, TypeError):
+            data = None
+        if isinstance(data, dict):
+            project = data.get("project") or {}
+            name = str(project.get("name", "")).lower()
+            deps = " ".join(str(d).lower() for d in (project.get("dependencies") or []))
+            return "mcp" in name or "mcp" in deps or "fastmcp" in deps
+    return "mcp" in text.lower()
+
+
+def _console_script_command(target: str, pyproject: Path, cwd: Path) -> list[str]:
+    """The command that runs a `[project.scripts]` entry point `module:func`.
+    Calls the entry function directly with the project's own venv python —
+    exactly what pip's generated console script does — so it launches even when
+    the module has no `__main__`/`if __name__` guard. That guard is often absent:
+    the entry function lives in __init__.py, or in a main.py with no guard, where
+    `python -m module` would import the file but never start the server."""
+    module, sep, func = target.partition(":")
+    module, func = module.strip(), func.strip()
+    python = _find_venv_python(pyproject, cwd)
+    if sep and func.isidentifier() and module:
+        return [python, "-c", f"import sys; from {module} import {func}; sys.exit({func}())"]
+    return [python, "-m", module]
+
+
+def _scan_python_pyproject(cwd: Path) -> list[dict]:
+    """Authoritative Python discovery from each pyproject.toml's declared
+    console-script entry point — no source-marker guessing. This finds servers
+    the source scan misses (e.g. a FastMCP subclass, where `FastMCP(` never
+    appears). Picks the mcp-named script; if a lone script is declared by an
+    otherwise-MCP project, takes that."""
+    guesses: list[dict] = []
+    for pyproject in cwd.rglob("pyproject.toml"):
+        if any(part in _SKIP_DIRS for part in pyproject.parts):
+            continue
+        try:
+            text = pyproject.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        scripts = _pyproject_scripts(text)
+        if not scripts:
+            continue
+        selected = [(n, t) for n, t in scripts.items() if "mcp" in n.lower() or "mcp" in t.lower()]
+        if not selected and len(scripts) == 1 and _project_is_mcp(text):
+            selected = list(scripts.items())
+        for name, target in selected[:3]:
+            guesses.append(
+                {
+                    "name": name,
+                    "command": _console_script_command(target, pyproject, cwd),
+                    "source": f"declared in {pyproject.relative_to(cwd)} [project.scripts]",
+                    "_module": target.partition(":")[0].strip(),
+                }
+            )
+        if len(guesses) >= 5:
+            break
+    return guesses
+
+
 def _scan_python_server(cwd: Path) -> list[dict]:
+    # Declared entry points (pyproject [project.scripts]) are authoritative —
+    # take them first, then fall back to source-marker guessing for anything
+    # they don't already cover.
+    declared = _scan_python_pyproject(cwd)
+    claimed = {g.get("_module") for g in declared}
+
     candidates: list[tuple[int, Path]] = []
     examined = 0
     for py in cwd.rglob("*.py"):
@@ -211,7 +321,7 @@ def _scan_python_server(cwd: Path) -> list[dict]:
     guesses: list[dict] = []
     for _score, py in candidates[:5]:
         module = _module_for(py, cwd)
-        if not module:
+        if not module or module in claimed:  # already covered by a declared entry point
             continue
         guesses.append(
             {
@@ -221,7 +331,9 @@ def _scan_python_server(cwd: Path) -> list[dict]:
                 "guess": True,
             }
         )
-    return guesses
+    for g in declared:
+        g.pop("_module", None)  # internal dedup key, not part of the public shape
+    return declared + guesses
 
 
 def _node_entry(pkg_data: dict, pkg_dir: Path) -> Path | None:
@@ -337,6 +449,21 @@ def _scan_rust_server(cwd: Path) -> list[dict]:
     if "mcp" not in text and "rmcp" not in text:
         return []
     return [{"name": cwd.name, "command": ["cargo", "run", "--release"], "source": "guessed from Cargo.toml", "guess": True}]
+
+
+def remote_mcp_hint(cwd: Path) -> str | None:
+    """A one-line explanation when there's no local (stdio) server to launch but
+    the project looks like a REMOTE MCP — a Cloudflare Workers app. Nothing runs
+    locally, so instead of a blank "no server found" the user is told to run/deploy
+    it and point gaslight at its URL. None when it's not a recognisable remote shape."""
+    for name in ("wrangler.toml", "wrangler.json", "wrangler.jsonc"):
+        if (cwd / name).exists() or any(cwd.glob(f"*/{name}")) or any(cwd.glob(f"apps/*/{name}")):
+            return (
+                "This looks like a REMOTE MCP server (a Cloudflare Workers app) — there's no local "
+                "process to launch. Run it (`wrangler dev`) or use its deployed URL, then point "
+                "gaslight at it:  gaslight --url https://<host>/mcp"
+            )
+    return None
 
 
 def discover_targets(cwd: Path) -> list[dict]:

@@ -32,6 +32,63 @@ def test_guesses_python_module_from_a_server_file(tmp_path):
     assert guess["command"][-2:] == ["-m", "backend.app.mcp_server.server"]
 
 
+def test_reads_declared_entry_point_from_pyproject(tmp_path):
+    # A real long-tail miss (qdrant): the server SUBCLASSES FastMCP, so the
+    # source-marker scan never sees `FastMCP(` and finds nothing. The authoritative
+    # signal is pyproject's [project.scripts] — the Python analog of package.json bin.
+    pkg = tmp_path / "src" / "mcp_server_qdrant"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    # note: no `if __name__` guard and no `FastMCP(` call — only a subclass.
+    (pkg / "mcp_server.py").write_text("from mcp.server.fastmcp import FastMCP\nclass S(FastMCP):\n    pass\n")
+    (pkg / "main.py").write_text("def main():\n    pass\n")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "mcp-server-qdrant"\n'
+        '[project.scripts]\nmcp-server-qdrant = "mcp_server_qdrant.main:main"\n'
+    )
+    found = discover_targets(tmp_path)
+    assert found, "declared entry point should be discovered even without a FastMCP() marker"
+    top = found[0]
+    assert not top.get("guess"), "a declared entry point is authoritative, not a guess"
+    # runs the entry function directly (pip-console-script style), NOT `-m module`,
+    # because main.py has no __main__ guard so `-m` would import but never start it.
+    assert top["command"][1] == "-c"
+    assert "from mcp_server_qdrant.main import main" in top["command"][2]
+
+
+def test_ignores_non_mcp_console_scripts(tmp_path):
+    # A project with several CLI scripts, none MCP-named, must NOT be mistaken for
+    # a server (serena: serena / serena-agent / serena-hooks are all its CLI).
+    pkg = tmp_path / "src" / "toolkit"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "toolkit"\ndependencies = ["mcp"]\n'
+        '[project.scripts]\ntoolkit = "toolkit.cli:main"\ntoolkit-fmt = "toolkit.fmt:main"\n'
+    )
+    found = discover_targets(tmp_path)
+    assert all("[project.scripts]" not in (c.get("source") or "") for c in found)
+
+
+def test_remote_mcp_hint_for_cloudflare_workers(tmp_path):
+    # A Cloudflare Workers MCP (git-mcp, cloudflare-*) has no local stdio server —
+    # declining is correct, but the user should be told to use --url, not left blank.
+    from gaslight.core.discovery import remote_mcp_hint
+
+    (tmp_path / "package.json").write_text('{"name": "git-mcp"}')
+    (tmp_path / "wrangler.jsonc").write_text('{"name": "git-mcp"}')
+    assert discover_targets(tmp_path) == []  # nothing local to launch
+    hint = remote_mcp_hint(tmp_path)
+    assert hint and "--url" in hint
+
+
+def test_no_remote_hint_for_ordinary_project(tmp_path):
+    from gaslight.core.discovery import remote_mcp_hint
+
+    (tmp_path / "package.json").write_text('{"name": "plain"}')
+    assert remote_mcp_hint(tmp_path) is None
+
+
 def test_empty_project_finds_nothing(tmp_path):
     assert discover_targets(tmp_path) == []
 

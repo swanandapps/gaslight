@@ -17,7 +17,7 @@ import os
 import shlex
 from pathlib import Path
 
-from gaslight.core.discovery import discover_targets
+from gaslight.core.discovery import discover_targets, remote_mcp_hint
 
 CONFIG_NAME = ".gaslight.json"
 
@@ -65,7 +65,11 @@ def _choose_target(console, prompter, cwd: Path):
     whole point — that separation was what the old flat menu was missing."""
     targets = discover_targets(cwd)
     if not targets:
-        console.print("[dim]Couldn't auto-detect how your agent starts — enter its command below.[/]\n")
+        hint = remote_mcp_hint(cwd)
+        if hint:
+            console.print(f"[yellow]ℹ  {hint}[/]\n")
+        else:
+            console.print("[dim]Couldn't auto-detect how your agent starts — enter its command below.[/]\n")
         return shlex.split(prompter.text(_CMD_HINT)), None
 
     primary = targets[0]
