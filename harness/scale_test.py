@@ -61,7 +61,7 @@ def _discover(target_dir: Path):
     return targets[0].get("command") if targets else None
 
 
-def run_one(repo: dict, workdir: Path, timeouts: dict) -> dict:
+def run_one(repo: dict, workdir: Path, timeouts: dict, discover_only: bool = False) -> dict:
     name = repo["name"]
     result: dict = {"name": name, "ecosystem": repo.get("ecosystem"), "stage": "clone"}
     dest = workdir / name
@@ -74,16 +74,19 @@ def run_one(repo: dict, workdir: Path, timeouts: dict) -> dict:
 
     target = dest / repo["subdir"] if repo.get("subdir") else dest
 
-    result["stage"] = "setup"
-    # Some monorepos (pnpm/yarn workspaces) must install from the repo root even
-    # though the server lives in a subdir.
-    setup_dir = dest if repo.get("setup_from_root") else target
-    for step in repo.get("setup") or []:
-        code, out, err = _run(step.split() if isinstance(step, str) else step, setup_dir, timeouts["setup"])
-        if code != 0:
-            result.update(ok=False, setup_failed=step, detail=_tail(out + err, 2))
-            return result
-    result["setup_ok"] = True
+    # Discovery reads manifests/source that exist right after clone, so a fast
+    # coverage check skips the (slow) build/install entirely.
+    if not discover_only:
+        result["stage"] = "setup"
+        # Some monorepos (pnpm/yarn workspaces) must install from the repo root
+        # even though the server lives in a subdir.
+        setup_dir = dest if repo.get("setup_from_root") else target
+        for step in repo.get("setup") or []:
+            code, out, err = _run(step.split() if isinstance(step, str) else step, setup_dir, timeouts["setup"])
+            if code != 0:
+                result.update(ok=False, setup_failed=step, detail=_tail(out + err, 2))
+                return result
+        result["setup_ok"] = True
 
     result["stage"] = "discovery"
     command = _discover(target)
@@ -91,6 +94,9 @@ def run_one(repo: dict, workdir: Path, timeouts: dict) -> dict:
     result["command"] = command
     if command is None:
         result.update(ok=False, detail=["discovery found no server"])
+        return result
+    if discover_only:  # fast long-tail coverage: did we find the server + a plausible command?
+        result.update(ok=True, stage="discovery")
         return result
 
     result["stage"] = "scan"
@@ -123,6 +129,7 @@ def main() -> int:
     ap.add_argument("--workdir", type=Path, default=DEFAULT_WORK)
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--skip-high-risk", action="store_true")
+    ap.add_argument("--discover-only", action="store_true", help="stop after discovery (fast coverage check, no scan)")
     ap.add_argument("--clone-timeout", type=int, default=180)
     ap.add_argument("--setup-timeout", type=int, default=600)
     ap.add_argument("--scan-timeout", type=int, default=300)
@@ -131,12 +138,15 @@ def main() -> int:
     repos = json.loads(args.repos.read_text())
     if args.skip_high_risk:
         repos = [r for r in repos if r.get("risk") != "high"]
+    # Resolve to absolute: clone uses cwd=workdir with dest=workdir/name, so a
+    # relative workdir would resolve the dest against cwd and double the path.
+    args.workdir = args.workdir.resolve()
     args.workdir.mkdir(parents=True, exist_ok=True)
     timeouts = {"clone": args.clone_timeout, "setup": args.setup_timeout, "scan": args.scan_timeout}
 
     results: list[dict] = []
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        futures = {pool.submit(run_one, r, args.workdir, timeouts): r for r in repos}
+        futures = {pool.submit(run_one, r, args.workdir, timeouts, args.discover_only): r for r in repos}
         for fut in as_completed(futures):
             r = fut.result()
             results.append(r)
