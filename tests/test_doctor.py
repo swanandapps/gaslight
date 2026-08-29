@@ -90,3 +90,9 @@ def test_malformed_tool_schema_diagnosed_not_credential():
     joined = " ".join(diagnose_launch(err, _SPEC)).lower()
     assert "match the mcp spec" in joined
     assert "credential" not in joined
+
+
+def test_node_unbuilt_diagnosed_not_python_venv():
+    joined = " ".join(diagnose_launch("Error: Cannot find module '/x/dist/index.js'", _SPEC)).lower()
+    assert "build" in joined and "npm" in joined
+    assert "virtualenv" not in joined  # must not confuse it with the python-venv case

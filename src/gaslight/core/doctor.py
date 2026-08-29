@@ -98,12 +98,18 @@ _SIGNALS: tuple[tuple[tuple[str, ...], str], ...] = (
         "Its port is already in use — another copy of the server may still be running.",
     ),
     (
-        ("modulenotfounderror", "no module named", "cannot find module"),
+        ("modulenotfounderror", "no module named"),
         "The server couldn't import a dependency — most often because it ran with the WRONG "
         "Python, not its own virtualenv (which is where its dependencies live). Point the "
         "launch command at the project's venv, e.g. `path/to/.venv/bin/python -m your.module` "
         "(gaslight tries to find it automatically, but not every venv layout is guessable). If "
         "it really is missing, install it for the interpreter you're launching with.",
+    ),
+    (
+        ("cannot find module", "err_module_not_found"),
+        "A Node server that isn't built (or installed) yet — its entry file (often dist/…) "
+        "doesn't exist. Build it first: `npm install && npm run build` in the server's folder, "
+        "then re-run. If it's a published package, `npx <package-name>` also works.",
     ),
     (
         ("cannot parse", "invalid pyproject", "tomldecodeerror", "invalid config"),

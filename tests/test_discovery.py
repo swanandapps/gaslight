@@ -3,6 +3,8 @@ config/manifests, and a best-guess `-m module` from a project scan. See
 core/discovery.py.
 """
 
+import json
+
 from gaslight.core.discovery import discover_targets
 
 
@@ -111,3 +113,31 @@ def test_venv_recovery_only_for_module_errors(tmp_path):
     spec = TargetSpec(command=["python", "-m", "x"])
     assert _venv_recovery_spec(spec, "Connection refused", set(), tmp_path) is None  # not a wrong-Python signal
     assert _venv_recovery_spec(TargetSpec(command=["npx", "srv"]), "ModuleNotFoundError", set(), tmp_path) is None
+
+
+def test_finds_node_mcp_server_from_package_json(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({
+        "name": "@x/server-foo",
+        "bin": {"foo": "dist/index.js"},
+        "dependencies": {"@modelcontextprotocol/sdk": "^1.0.0"},
+    }))
+    targets = discover_targets(tmp_path)
+    assert targets, "a Node MCP server must be discovered"
+    cmd = targets[0]["command"]
+    assert cmd[0] == "node" and cmd[-1].endswith("dist/index.js")
+
+
+def test_node_ts_entry_uses_tsx(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({
+        "name": "srv", "main": "src/index.ts",
+        "dependencies": {"@modelcontextprotocol/sdk": "^1.0.0"},
+    }))
+    targets = discover_targets(tmp_path)
+    assert targets and targets[0]["command"][:2] == ["npx", "tsx"]
+
+
+def test_ignores_a_plain_node_lib(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({
+        "name": "just-a-lib", "main": "index.js", "dependencies": {"lodash": "^4"},
+    }))
+    assert discover_targets(tmp_path) == []

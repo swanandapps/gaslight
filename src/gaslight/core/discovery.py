@@ -183,11 +183,60 @@ def _scan_python_server(cwd: Path) -> list[dict]:
     return guesses
 
 
+def _node_entry(pkg_data: dict, pkg_dir: Path) -> Path | None:
+    """The JS/TS file a Node package starts from — its `bin`, else `main`."""
+    bin_field = pkg_data.get("bin")
+    entry: str | None = None
+    if isinstance(bin_field, str):
+        entry = bin_field
+    elif isinstance(bin_field, dict) and bin_field:
+        entry = next(iter(bin_field.values()))
+    elif isinstance(pkg_data.get("main"), str):
+        entry = pkg_data["main"]
+    return (pkg_dir / entry).resolve() if entry else None
+
+
+def _scan_node_server(cwd: Path) -> list[dict]:
+    """Best-guess Node/TS MCP servers from their package.json — most MCP servers
+    are Node, so scanning only Python left the majority undetectable. An MCP
+    server here is one that depends on @modelcontextprotocol/sdk (or is
+    mcp-named); its start command is `node` against the package's declared entry
+    (bin/main), usually a built dist/index.js. If that build output isn't there
+    yet the launch fails with a clear 'build it first' diagnosis (core/doctor.py)."""
+    guesses: list[dict] = []
+    for pkg in cwd.rglob("package.json"):
+        if any(part in _SKIP_DIRS for part in pkg.parts):
+            continue
+        try:
+            data = json.loads(pkg.read_text(encoding="utf-8", errors="ignore"))
+        except (ValueError, OSError):
+            continue
+        deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+        named = (str(data.get("name", "")) + " " + " ".join(data.get("keywords") or [])).lower()
+        if "@modelcontextprotocol/sdk" not in deps and "mcp" not in named:
+            continue
+        entry = _node_entry(data, pkg.parent)
+        if entry is None:
+            continue
+        runner = ["npx", "tsx"] if entry.suffix in (".ts", ".mts") else ["node"]
+        guesses.append(
+            {
+                "name": str(data.get("name") or pkg.parent.name),
+                "command": [*runner, str(entry)],
+                "source": f"guessed from {pkg.relative_to(cwd)}",
+                "guess": True,
+            }
+        )
+        if len(guesses) >= 5:
+            break
+    return guesses
+
+
 def discover_targets(cwd: Path) -> list[dict]:
     """Candidate targets: [{name, command:[...] | url, source, guess?}, …].
-    Config/manifest hits (exact) first; a bounded project scan (best guess) only
-    if nothing was registered."""
+    Config/manifest hits (exact) first; a bounded project scan (best guess) — both
+    Python and Node/TS — only if nothing was registered."""
     found = _from_configs(cwd)
     if not found:
-        found = _scan_python_server(cwd)
+        found = _scan_python_server(cwd) + _scan_node_server(cwd)
     return found
