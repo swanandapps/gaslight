@@ -525,6 +525,15 @@ def _short_result(finding) -> str:
     return "clean"
 
 
+# The attacks that actually drive a model (via core/harness.py). Only these
+# change when you turn the LLM on — everything else is a direct, deterministic
+# probe. Used to decide whether "add an LLM for realism" is even relevant to a
+# given target: if none of these were attempted, an LLM would change nothing.
+_MODEL_DRIVEN = frozenset(
+    {"injection-exfil", "memory-poisoning", "output-leakage", "instruction-override", "tool-metadata-poisoning"}
+)
+
+
 def _truncate_tools(names: list[str], keep: int = 4) -> str:
     if len(names) <= keep:
         return ", ".join(names)
@@ -775,16 +784,11 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     if skipped:
         reasons = []
         if notool_skips:
-            reasons.append(f"{len(notool_skips)} need a tool this agent doesn't have")
+            reasons.append(f"{len(notool_skips)} don't apply (no matching tool)")
         if backend_skips:
-            reasons.append(f"{len(backend_skips)} couldn't run — the agent's backend was unreachable")
+            reasons.append(f"{len(backend_skips)} a backend was unreachable")
         coverage += f" [dim]{len(skipped)} not tested: {' · '.join(reasons)}.[/]"
     console.print(coverage)
-    if backend_skips:
-        console.print(
-            "[yellow]→ For a full report, start your agent with a test backend and pass throwaway "
-            "credentials via [bold]--env KEY=VALUE[/] (never production values).[/]"
-        )
 
     ai_hints: list[str] = []
     if args.classify_secrets and llm_active:
@@ -817,6 +821,30 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
         metrics=metrics, metrics_avg=metrics_avg, tool_count=tool_count, surface=surface, blast=blast,
     )
     console.print(f"\n[bold]📋  Your report card:[/] {report_path} [dim](open it in your browser)[/]")
+
+    # Two honest, distinct ways to get a stronger report — shown only when each
+    # actually applies. They are NOT the same knob: --env widens COVERAGE (lets
+    # backend-needing tools run); --llm raises REALISM (a real model instead of
+    # the scripted stand-in drives the model-based attacks). We only suggest the
+    # LLM when a model-driven attack actually ran — otherwise it would change
+    # nothing on this target, and gaslight doesn't sell upgrades that do nothing.
+    upgrades: list[str] = []
+    if backend_skips:
+        upgrades.append(
+            f"[yellow]Broader coverage[/] — {len(backend_skips)} check(s) couldn't run because a tool's "
+            "backend was unreachable. Start a test backend and re-run with [bold]--env KEY=VALUE[/] "
+            "(throwaway creds, never production)."
+        )
+    if not llm_active and any(f.attack_key in _MODEL_DRIVEN and f.attempted for f in findings):
+        upgrades.append(
+            "[cyan]More realistic[/] — this report used the deterministic core (no LLM). Add "
+            "[bold]--llm ollama[/] (free, local) to drive the model-based attacks with a real model "
+            "instead of the scripted stand-in."
+        )
+    if upgrades:
+        console.print("\n[bold]Make this report stronger:[/]")
+        for line in upgrades:
+            console.print(f"  • {line}")
 
     # Personality + the AI-first fix loop: gaslight finds and proves it; the
     # user's own agent fixes it. A clean run gets a friendly win instead.
