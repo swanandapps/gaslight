@@ -104,10 +104,6 @@ class Sink:
             self._captured.append(request)
 
     def start(self) -> None:
-        def handler_factory(*args: object, **kwargs: object) -> _Handler:
-            handler = _Handler(*args, **kwargs)  # type: ignore[arg-type]
-            return handler
-
         # bind the sink instance onto the handler class so requests can record back
         _Handler.sink = self
         self._server = ThreadingHTTPServer((self._host, 0), _Handler)

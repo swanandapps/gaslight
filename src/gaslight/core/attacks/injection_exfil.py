@@ -1,4 +1,4 @@
-"""V1's one attack: indirect prompt injection into data, exfiltrated to a sink.
+"""The flagship attack: indirect prompt injection into data, exfiltrated to a sink.
 
 The mechanism behind the real 2026 incidents (EchoLeak, ForcedLeak, GitLost):
 an attacker never talks to the agent directly. They plant text somewhere the
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from gaslight.core.attacks.base import AttackModule, Finding
 from gaslight.core.canary import mint
-from gaslight.core.harness import ToolCallRecord, VictimHarness
+from gaslight.core.harness import ToolCallRecord, TranscriptEntry, VictimHarness
 from gaslight.core.llm import LLMProvider
 from gaslight.core.schema import find_exfil_tool, find_read_tool, find_string_field, find_write_tool
 from gaslight.core.sink import Sink
@@ -29,7 +29,7 @@ from gaslight.core.target import Target
 
 
 def _find_exfil_call(
-    transcript: list, tool_name: str
+    transcript: list[TranscriptEntry], tool_name: str
 ) -> ToolCallRecord | None:
     for entry in transcript:
         for call in entry.tool_calls:

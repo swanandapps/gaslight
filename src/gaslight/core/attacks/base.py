@@ -1,6 +1,7 @@
 """Shared shape every attack module returns and is driven by.
 
-One interface, many modules — V1 ships exactly one (injection_exfil.py).
+One interface, many modules — injection_exfil.py was the first; the same
+contract now backs the full attack suite.
 Keeping this contract narrow now is what lets excessive-agency, tool-
 poisoning, and jailbreak modules slot in later without touching the harness,
 the scorer, or the reporter (see §11/§13 of the design doc: this is the

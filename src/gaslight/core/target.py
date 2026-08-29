@@ -12,14 +12,13 @@ are written against `Target.call_tool`, never against a transport.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 import tempfile
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from typing import Any
-
-import logging
 
 import anyio
 

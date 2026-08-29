@@ -94,8 +94,6 @@ class RunView:
         if any(c.state == FAIL for c in phase.checks):
             return "breached"
         resolved = all(c.state in (PASS, FAIL, SKIP) for c in phase.checks)
-        if resolved and idx < self._current:
-            return "done"
         if resolved and idx == self._current and idx == len(self.phases) - 1:
             return "done"
         if idx == self._current:
@@ -136,7 +134,7 @@ class RunView:
                 table.add_row(Text(glyph, style=colour), Text(check.name), Text(check.result or "", style="dim"))
             else:
                 table.add_row(Text("·", style="grey30"), Text(check.name, style="grey42"), Text(""))
-        what = phase.checks and self._active_what(phase)
+        what = self._active_what(phase)
         header = Text(phase.name, style="bold")
         if what:
             header.append(f"  —  {what}", style="dim")

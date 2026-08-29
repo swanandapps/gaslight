@@ -146,12 +146,7 @@ def find_address_field(schema: dict[str, Any] | None) -> str | None:
     "share_with") match without needing every variant spelled out in
     ADDRESS_FIELD_PRIORITY.
     """
-    props = _properties(schema)
-    for keyword in ADDRESS_FIELD_PRIORITY:
-        for key in props:
-            if keyword in key.lower().split("_"):
-                return key
-    return None
+    return _first_field_matching(schema, ADDRESS_FIELD_PRIORITY)
 
 
 def _find_tool_with_field(tools, keywords, field_finder):
@@ -301,12 +296,7 @@ def find_path_field(schema: dict[str, Any] | None) -> str | None:
     in PATH_FIELD_PRIORITY so a compound name with no underscore to split
     on ("filepath") still matches.
     """
-    props = _properties(schema)
-    for keyword in PATH_FIELD_PRIORITY:
-        for key in props:
-            if keyword in key.lower().split("_"):
-                return key
-    return None
+    return _first_field_matching(schema, PATH_FIELD_PRIORITY)
 
 
 def find_file_read_tool(tools: list[types.Tool]) -> tuple[types.Tool | None, str | None]:
@@ -337,12 +327,11 @@ def find_url_field(schema: dict[str, Any] | None) -> str | None:
     that a tool reaches out over the network. Name match is word-boundary
     (like find_address_field); the `format` check catches a plainly-named
     field ("source", "target") that the schema still declares as a URI."""
-    props = _properties(schema)
-    for keyword in _URL_FIELD_NAMES:
-        for key in props:
-            if keyword in key.lower().split("_"):
-                return key
-    for key, spec in props.items():
+    named = _first_field_matching(schema, _URL_FIELD_NAMES)
+    if named is not None:
+        return named
+    # A plainly-named field ("source", "target") the schema still declares as a URI.
+    for key, spec in _properties(schema).items():
         if isinstance(spec, dict) and spec.get("type") == "string" and str(spec.get("format", "")).lower() in _URL_FORMATS:
             return key
     return None

@@ -352,21 +352,21 @@ async def _collect_ai_hints(provider, findings: list) -> list[str]:
     `raw_observed_text` bucket (resource-exposure, which has no transcript
     since no agent turn ever runs) — deduping into one flat hint list."""
     ai_hints: list[str] = []
+
+    async def add_hints_from(text: str) -> None:
+        for hint in await suggest_possible_secrets(provider, text):
+            if hint not in ai_hints:
+                ai_hints.append(hint)
+
     for finding in findings:
         if finding.attack_key not in ("baseline-disclosure", "resource-exposure"):
             continue
         for entry in finding.transcript:
             for call in entry.tool_calls:
-                for hint in await suggest_possible_secrets(provider, call.result_text):
-                    if hint not in ai_hints:
-                        ai_hints.append(hint)
-            for hint in await suggest_possible_secrets(provider, entry.assistant_text):
-                if hint not in ai_hints:
-                    ai_hints.append(hint)
+                await add_hints_from(call.result_text)
+            await add_hints_from(entry.assistant_text)
         for text in finding.raw_observed_text:
-            for hint in await suggest_possible_secrets(provider, text):
-                if hint not in ai_hints:
-                    ai_hints.append(hint)
+            await add_hints_from(text)
     return ai_hints
 
 
@@ -446,7 +446,8 @@ def _downgrade_if_backend_was_down(finding, target) -> None:
     if finding.fired or not finding.attempted or target.backend_failures == 0:
         return
     finding.attempted = False
-    finding.reason = "not tested — the target's backend was unreachable, so probes couldn't reach the tool."
+    # "Previously recorded" must capture the ORIGINAL attack reason (what it
+    # concluded before this downgrade), so read finding.reason before rewriting it.
     finding.reason = (
         f"not tested — the target's own backend was unreachable "
         f"({target.backend_failures} call(s) failed to connect or authenticate), so this "

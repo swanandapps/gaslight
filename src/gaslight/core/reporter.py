@@ -518,7 +518,7 @@ _HTML_TEMPLATE = _jinja_env.from_string(
 
     <div class="foot">
       <div><b>How to read this.</b> CONFIRMED means something physically happened — a token we planted arrived at a listener we control, or a call that should have been refused went through. If it's confirmed, it's real.</div>
-      <div style="margin-top:8px"><b>Scoring.</b> Each metric is a set of weighted checks. Green ≥ 90, amber 50–89, red &lt; 50. A confirmed exploit caps its metric at 40 — you don't score green when something got through. N/A checks (no tool of that shape) are excluded, never counted as passed.</div>
+      <div style="margin-top:8px"><b>Scoring.</b> Each metric is a set of weighted checks. Green ≥ 90, amber 50–89, red &lt; 50. A confirmed exploit caps its metric at 89 — you don't score green when something got through. N/A checks (no tool of that shape) are excluded, never counted as passed.</div>
       {% if surface %}<div style="margin-top:8px"><b>Surface hygiene.</b> Read straight off the tool schemas before any probe ran — no call was made, nothing here is proven. It never affects the grade or the metrics above.</div>{% endif %}
     </div>
   </div>

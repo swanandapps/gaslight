@@ -56,8 +56,8 @@ class Metric:
     audits: tuple[Audit, ...]
 
 
-# The five metrics. Every one of the 13 attack keys maps into exactly one of
-# them, so nothing an attack proves is silently dropped from the score.
+# The five metrics. Every attack key maps into exactly one of them, so nothing
+# an attack proves is silently dropped from the score.
 METRICS: tuple[Metric, ...] = (
     Metric(
         "Network",
