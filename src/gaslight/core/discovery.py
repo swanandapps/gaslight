@@ -17,6 +17,7 @@ command/args or url.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 _SKIP_DIRS = {".venv", "venv", "site-packages", "node_modules", "__pycache__", ".git", "build", "dist"}
@@ -112,6 +113,44 @@ def _find_venv_python(server_file: Path, cwd: Path) -> str:
     if not candidates:
         return "python"
     return str(min(candidates, key=rank))
+
+
+_VENV_SEARCH_PRUNE = {"node_modules", ".git", "__pycache__", "site-packages", "dist", "build"}
+_VENV_SEARCH_MAX_DEPTH = 4
+
+
+def list_venv_pythons(cwd: Path) -> list[str]:
+    """Every virtualenv interpreter under the project, ranked best-first (a
+    standard-named venv, then an mcp-named one, then the rest).
+
+    This is what makes launch self-heal: when the server was started with the
+    wrong Python (its deps live in a venv gaslight didn't guess), the caller
+    retries each of these until one connects — no user intervention. Bounded and
+    pruned (skips node_modules / site-packages, caps depth) so it stays fast even
+    in a large monorepo."""
+    found: list[Path] = []
+    seen: set[Path] = set()
+    for root, dirs, files in os.walk(cwd):
+        if len(Path(root).relative_to(cwd).parts) >= _VENV_SEARCH_MAX_DEPTH:
+            dirs[:] = []
+            continue
+        dirs[:] = [d for d in dirs if d not in _VENV_SEARCH_PRUNE]
+        if "pyvenv.cfg" in files:
+            python = _venv_python_in(Path(root))
+            if python is not None and python not in seen:
+                seen.add(python)
+                found.append(python)
+            dirs[:] = []  # a venv's internals never hold another target venv
+
+    def rank(python: Path) -> int:
+        name = python.parent.parent.name.lower()  # the venv dir's name
+        if name in (".venv", "venv", "env"):
+            return 0
+        if "mcp" in name:
+            return 1
+        return 2
+
+    return [str(p) for p in sorted(found, key=rank)]
 
 
 def _scan_python_server(cwd: Path) -> list[dict]:

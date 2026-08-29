@@ -143,6 +143,26 @@ class _QuestionaryPrompter:
         return self._cancel(_ask_blocking(questionary.confirm(message, default=default)))
 
 
+def _venv_recovery_spec(spec, stderr_text, tried: set[str], cwd: Path):
+    """Self-heal a stdio launch that died for the wrong-Python reason — a
+    ModuleNotFoundError, i.e. the server's dependencies live in a virtualenv
+    gaslight didn't launch with. Returns a spec pointed at the next untried
+    project venv python, or None when there's nothing left to try. Runs
+    autonomously in the discovery loop before any failure is shown to the user."""
+    from gaslight.core.discovery import list_venv_pythons
+
+    if not spec.command or "python" not in os.path.basename(spec.command[0]).lower():
+        return None
+    blob = (stderr_text or "").lower()
+    if "modulenotfounderror" not in blob and "no module named" not in blob:
+        return None
+    for python in list_venv_pythons(cwd):
+        if python not in tried:
+            tried.add(python)
+            return TargetSpec(command=[python, *spec.command[1:]], env=spec.env)
+    return None
+
+
 def _spec_from_settings(settings, env):
     """Build a TargetSpec from a wizard result."""
     if settings.get("url"):
@@ -691,6 +711,7 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     tool_count = 0
     discovered_tools: list = []
     surface: list = []
+    tried_interpreters: set[str] = {spec.command[0]} if spec.command else set()
     while True:
         discovery = TargetConnection(spec, capture_stderr=True)
         try:
@@ -700,6 +721,13 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
                 surface = scan_surface(target.tools, target.resources)
             break
         except TargetUnreachable as exc:
+            # Self-heal FIRST: if the server just ran with the wrong Python, retry
+            # with the project's virtualenvs automatically — no user prompt.
+            recovered = _venv_recovery_spec(spec, discovery.stderr_text, tried_interpreters, Path.cwd())
+            if recovered is not None:
+                console.print(f"[dim]↻  wrong Python — retrying with {recovered.command[0]}[/]")
+                spec = recovered
+                continue
             console.print(f"[bold red]✗  couldn't start the target[/] — {exc}")
             hints = diagnose_launch(f"{exc}\n{discovery.stderr_text}", spec)
             if hints:

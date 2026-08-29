@@ -66,3 +66,48 @@ def test_falls_back_to_bare_python_when_no_venv(tmp_path):
     (tmp_path / "srv" / "server.py").write_text("from mcp.server import FastMCP\nFastMCP('x').run()\n")
     targets = discover_targets(tmp_path)
     assert targets and targets[0]["command"][0] == "python"
+
+
+def _make_venv(root, name):
+    binv = root / name / "bin"
+    binv.mkdir(parents=True)
+    (root / name / "pyvenv.cfg").write_text("home = /x\n")
+    (binv / "python").write_text("")
+    (binv / "python").chmod(0o755)
+
+
+def test_list_venv_pythons_ranks_and_prunes(tmp_path):
+    from gaslight.core.discovery import list_venv_pythons
+
+    _make_venv(tmp_path / "sub", ".mcp-venv")
+    _make_venv(tmp_path / "sub", ".venv")
+    _make_venv(tmp_path / "node_modules" / "pkg", ".venv")  # must be pruned
+
+    pys = list_venv_pythons(tmp_path)
+    assert pys and pys[0].endswith("sub/.venv/bin/python")  # standard-named first
+    assert any(p.endswith("sub/.mcp-venv/bin/python") for p in pys)
+    assert not any("node_modules" in p for p in pys)  # pruned, never descended
+
+
+def test_venv_recovery_retries_then_exhausts(tmp_path):
+    from gaslight.cli import _venv_recovery_spec
+    from gaslight.core.target import TargetSpec
+
+    _make_venv(tmp_path, ".venv")
+    spec = TargetSpec(command=["python", "-m", "pkg.server"])
+    tried = {"python"}
+    recovered = _venv_recovery_spec(spec, "ModuleNotFoundError: No module named 'dotenv'", tried, tmp_path)
+    assert recovered is not None and recovered.command[0].endswith(".venv/bin/python")
+    assert recovered.command[1:] == ["-m", "pkg.server"]
+    # the only venv is now tried — nothing left to heal with
+    assert _venv_recovery_spec(recovered, "ModuleNotFoundError", tried, tmp_path) is None
+
+
+def test_venv_recovery_only_for_module_errors(tmp_path):
+    from gaslight.cli import _venv_recovery_spec
+    from gaslight.core.target import TargetSpec
+
+    _make_venv(tmp_path, ".venv")
+    spec = TargetSpec(command=["python", "-m", "x"])
+    assert _venv_recovery_spec(spec, "Connection refused", set(), tmp_path) is None  # not a wrong-Python signal
+    assert _venv_recovery_spec(TargetSpec(command=["npx", "srv"]), "ModuleNotFoundError", set(), tmp_path) is None
