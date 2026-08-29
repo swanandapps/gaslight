@@ -38,3 +38,31 @@ def test_bad_config_is_ignored(tmp_path):
     (tmp_path / ".mcp.json").write_text("{not valid json")
     # falls through to the project scan (which finds nothing here) — no crash
     assert discover_targets(tmp_path) == []
+
+
+def test_finds_nested_nonstandard_venv_and_prefers_mcp_named(tmp_path):
+    # Mirrors a real project (01dev): venvs live in a subdir under non-standard
+    # names, not cwd/.venv. Discovery must still point the guess at one — and
+    # prefer the mcp-named venv for an MCP server.
+    (tmp_path / "backend" / "app" / "mcp").mkdir(parents=True)
+    server = tmp_path / "backend" / "app" / "mcp" / "tools.py"
+    server.write_text("from mcp.server import FastMCP\napp = FastMCP('x')\napp.run()\n")
+    for name in (".lesson-venv", ".mcp-venv"):
+        binv = tmp_path / "backend" / name / "bin"
+        binv.mkdir(parents=True)
+        (tmp_path / "backend" / name / "pyvenv.cfg").write_text("home = /x\n")
+        (binv / "python").write_text("")
+        (binv / "python").chmod(0o755)
+
+    targets = discover_targets(tmp_path)
+    assert targets, "should guess a target"
+    cmd = targets[0]["command"]
+    assert cmd[0].endswith("backend/.mcp-venv/bin/python"), cmd[0]
+    assert cmd[1:] == ["-m", "backend.app.mcp.tools"]
+
+
+def test_falls_back_to_bare_python_when_no_venv(tmp_path):
+    (tmp_path / "srv").mkdir()
+    (tmp_path / "srv" / "server.py").write_text("from mcp.server import FastMCP\nFastMCP('x').run()\n")
+    targets = discover_targets(tmp_path)
+    assert targets and targets[0]["command"][0] == "python"

@@ -98,8 +98,12 @@ _SIGNALS: tuple[tuple[tuple[str, ...], str], ...] = (
         "Its port is already in use — another copy of the server may still be running.",
     ),
     (
-        ("modulenotfounderror", "cannot find module", "importerror"),
-        "The server has a missing dependency — its install looks incomplete. Reinstall it.",
+        ("modulenotfounderror", "no module named", "cannot find module"),
+        "The server couldn't import a dependency — most often because it ran with the WRONG "
+        "Python, not its own virtualenv (which is where its dependencies live). Point the "
+        "launch command at the project's venv, e.g. `path/to/.venv/bin/python -m your.module` "
+        "(gaslight tries to find it automatically, but not every venv layout is guessable). If "
+        "it really is missing, install it for the interpreter you're launching with.",
     ),
     (
         ("cannot parse", "invalid pyproject", "tomldecodeerror", "invalid config"),

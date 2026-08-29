@@ -66,15 +66,55 @@ def _from_configs(cwd: Path) -> list[dict]:
     return found
 
 
-def _python_interpreter(cwd: Path) -> str:
-    """Prefer the project's own venv python (so the target keeps its deps); else
-    a bare `python`."""
-    venv = cwd / ".venv" / "bin" / "python"
-    return str(venv) if venv.exists() else "python"
+def _venv_python_in(directory: Path) -> Path | None:
+    """The interpreter inside `directory` if it is a virtualenv (has pyvenv.cfg)."""
+    if not (directory / "pyvenv.cfg").exists():
+        return None
+    for rel in ("bin/python", "Scripts/python.exe"):
+        python = directory / rel
+        if python.exists():
+            return python
+    return None
+
+
+def _find_venv_python(server_file: Path, cwd: Path) -> str:
+    """The interpreter that can actually RUN this server — its own project
+    virtualenv, which holds its dependencies. A bare `python` almost never has
+    them (found in the wild: a server importing python-dotenv, launched with the
+    wrong interpreter, died with ModuleNotFoundError).
+
+    Walks up from the server file to the project root, stopping at the first
+    level that holds a venv — because real projects keep the venv beside the
+    code, not always at cwd/.venv, and often under a non-standard name
+    (.mcp-venv, .lesson-venv). Within that level, prefers a standard-named venv,
+    then one whose name hints it's for the MCP server, then the rest. Falls back
+    to `python` when nothing is found."""
+    directory = server_file.parent
+    candidates: list[Path] = []
+    while True:
+        try:
+            entries = sorted(directory.iterdir())
+        except OSError:
+            entries = []
+        candidates = [p for entry in entries if (p := _venv_python_in(entry)) is not None]
+        if candidates or directory == cwd:
+            break
+        directory = directory.parent
+
+    def rank(python: Path) -> int:
+        name = python.parent.parent.name.lower()  # the venv dir's name
+        if name in (".venv", "venv", "env"):
+            return 0
+        if "mcp" in name:
+            return 1
+        return 2
+
+    if not candidates:
+        return "python"
+    return str(min(candidates, key=rank))
 
 
 def _scan_python_server(cwd: Path) -> list[dict]:
-    interp = _python_interpreter(cwd)
     guesses: list[dict] = []
     examined = 0
     for py in cwd.rglob("*.py"):
@@ -94,7 +134,7 @@ def _scan_python_server(cwd: Path) -> list[dict]:
         guesses.append(
             {
                 "name": py.stem,
-                "command": [interp, "-m", module],
+                "command": [_find_venv_python(py, cwd), "-m", module],
                 "source": f"guessed from {py.relative_to(cwd)}",
                 "guess": True,
             }
