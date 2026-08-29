@@ -141,3 +141,31 @@ def test_ignores_a_plain_node_lib(tmp_path):
         "name": "just-a-lib", "main": "index.js", "dependencies": {"lodash": "^4"},
     }))
     assert discover_targets(tmp_path) == []
+
+
+def _fastmcp(text="from mcp.server import FastMCP\nFastMCP('x').run()\n"):
+    return text
+
+
+def test_skips_test_files_and_prefers_real_entry(tmp_path):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "server.py").write_text(_fastmcp())
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_it.py").write_text(_fastmcp())  # a FastMCP ref in a test — must be ignored
+    targets = discover_targets(tmp_path)
+    assert targets and targets[0]["command"][-1] == "pkg.server"
+    assert all("test" not in t["command"][-1] for t in targets)
+
+
+def test_strips_src_layout_prefix(tmp_path):
+    (tmp_path / "src" / "mypkg").mkdir(parents=True)
+    (tmp_path / "src" / "mypkg" / "server.py").write_text(_fastmcp())
+    targets = discover_targets(tmp_path)
+    assert targets and targets[0]["command"][-1] == "mypkg.server"  # not src.mypkg.server
+
+
+def test_main_module_runs_the_package(tmp_path):
+    (tmp_path / "mypkg").mkdir()
+    (tmp_path / "mypkg" / "__main__.py").write_text(_fastmcp())
+    targets = discover_targets(tmp_path)
+    assert targets and targets[0]["command"][-1] == "mypkg"  # `-m mypkg` runs __main__.py

@@ -17,3 +17,6 @@ logs/
 .playwright-mcp/
 # Per-project scan config written by the setup wizard
 .gaslight.json
+
+# scale-test clones/output
+harness/.scale-work*/

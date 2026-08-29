@@ -153,11 +153,48 @@ def list_venv_pythons(cwd: Path) -> list[str]:
     return [str(p) for p in sorted(found, key=rank)]
 
 
+# Dirs that hold code but not the server entry — a FastMCP reference in a test or
+# example is not the thing to launch (found in the wild: a repo's tests/ matched
+# and gaslight guessed `-m tests.test_new_features`).
+_PY_SERVER_SKIP_DIRS = _SKIP_DIRS | {"tests", "test", "examples", "example", "docs", "doc", "sample", "samples"}
+
+
+def _is_test_file(py: Path) -> bool:
+    return py.name.startswith("test_") or py.name.endswith("_test.py") or py.name == "conftest.py"
+
+
+def _module_for(py: Path, cwd: Path) -> str:
+    """The `-m` module path to run this file. Drops a leading `src.` (src-layout:
+    the package installs importable without it) and collapses `pkg/__main__.py`
+    to `pkg` (running a package executes its __main__)."""
+    parts = list(py.relative_to(cwd).with_suffix("").parts)
+    if parts and parts[0] == "src":
+        parts = parts[1:]
+    if parts and parts[-1] == "__main__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def _server_score(py: Path, text: str) -> int:
+    """Rank how likely a matching file is the REAL server entry, so the launch
+    command points at it and not at some other file that merely mentions MCP."""
+    score = 0
+    if py.name == "__main__.py":
+        score += 3
+    if py.name in ("server.py", "main.py", "app.py", "__init__.py"):
+        score += 2
+    if "if __name__" in text:
+        score += 1
+    if "FastMCP(" in text:
+        score += 1
+    return score
+
+
 def _scan_python_server(cwd: Path) -> list[dict]:
-    guesses: list[dict] = []
+    candidates: list[tuple[int, Path]] = []
     examined = 0
     for py in cwd.rglob("*.py"):
-        if any(part in _SKIP_DIRS for part in py.parts):
+        if any(part in _PY_SERVER_SKIP_DIRS for part in py.parts) or _is_test_file(py):
             continue
         examined += 1
         if examined > _MAX_FILES:
@@ -166,10 +203,16 @@ def _scan_python_server(cwd: Path) -> list[dict]:
             text = py.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        looks_like_server = "FastMCP(" in text or ("mcp.server" in text and ".run(" in text)
-        if not looks_like_server:
+        if "FastMCP(" not in text and not ("mcp.server" in text and ".run(" in text):
             continue
-        module = ".".join(py.relative_to(cwd).with_suffix("").parts)
+        candidates.append((_server_score(py, text), py))
+
+    candidates.sort(key=lambda c: -c[0])  # the most server-looking file first
+    guesses: list[dict] = []
+    for _score, py in candidates[:5]:
+        module = _module_for(py, cwd)
+        if not module:
+            continue
         guesses.append(
             {
                 "name": py.stem,
@@ -178,8 +221,6 @@ def _scan_python_server(cwd: Path) -> list[dict]:
                 "guess": True,
             }
         )
-        if len(guesses) >= 5:
-            break
     return guesses
 
 
