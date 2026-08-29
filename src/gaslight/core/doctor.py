@@ -21,6 +21,24 @@ from gaslight.core.target import TargetSpec
 # trips two (old SDK *and* missing credential) gets both.
 _SIGNALS: tuple[tuple[tuple[str, ...], str], ...] = (
     (
+        # The server started and answered, but its tool list won't parse: a tool's
+        # inputSchema is missing the spec-required "type". The strict MCP client
+        # rejects the whole listing, so gaslight can't reach the tools. This is a
+        # real compliance bug in the target, NOT a missing credential — say so,
+        # instead of falling through to the generic "needs a credential" guess.
+        (
+            "validation error for listtoolsresult",
+            "validation errors for listtoolsresult",
+            "inputschema.type",
+            "input_schema.type",
+        ),
+        "The server STARTED, but its tool definitions don't match the MCP spec — a tool's input "
+        "schema is missing its required \"type\" (it should be \"type\": \"object\"). The strict MCP "
+        "client rejects the whole tool list, so gaslight couldn't reach the tools to scan them. "
+        "That malformed schema is itself a real bug worth fixing in the server; once its tools "
+        "declare a type, gaslight can scan it.",
+    ),
+    (
         (
             "no module named 'mcp.server.fastmcp'",
             # Any missing method on the MCP Server class is the old-SDK-vs-new

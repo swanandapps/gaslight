@@ -77,3 +77,16 @@ def test_stderr_tail_returns_last_nonempty_lines_trimmed():
 def test_stderr_tail_empty_on_no_output():
     assert stderr_tail("") == []
     assert stderr_tail(None) == []
+
+
+def test_malformed_tool_schema_diagnosed_not_credential():
+    # A server that starts fine but returns tool schemas missing "type" (found
+    # in the wild: mcp-obsidian) must be diagnosed as a spec-compliance bug in
+    # the target, NOT the generic "needs a credential" guess.
+    err = (
+        "ValidationError: 2 validation errors for ListToolsResult\n"
+        "tools.0.inputSchema.type\n  Field required"
+    )
+    joined = " ".join(diagnose_launch(err, _SPEC)).lower()
+    assert "match the mcp spec" in joined
+    assert "credential" not in joined
