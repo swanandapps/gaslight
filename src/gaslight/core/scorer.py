@@ -57,9 +57,11 @@ _DEFAULT_SEVERITY: dict[str, str] = {
 }
 
 
-def _severity_of(finding: Finding) -> str:
-    """A fired finding's severity: its own override, else the attack default,
-    else 'high' as a safe middle for an unmapped future attack."""
+def severity_of(finding: Finding) -> str:
+    """A fired finding's severity — "critical" | "high" | "medium": its own
+    override, else the attack default, else 'high' as a safe middle for an
+    unmapped future attack. Public so the reporter can badge each finding with
+    the same severity that decides the letter grade."""
     return finding.severity or _DEFAULT_SEVERITY.get(finding.attack_key, "high")
 
 
@@ -164,7 +166,7 @@ def grade(findings: list[Finding]) -> GradeResult:
             # than assume a reply-disclosure shape. The report names the exact
             # tool(s) and attaches the proof for each confirmed finding.
             detail = "see the confirmed findings below — each names the tool and attaches its proof."
-    worst = max(_SEVERITY_RANK[_severity_of(f)] for f in fired)
+    worst = max(_SEVERITY_RANK[severity_of(f)] for f in fired)
     worst_severity = next(s for s, r in _SEVERITY_RANK.items() if r == worst)
     return GradeResult(
         grade=_SEVERITY_GRADE[worst_severity],

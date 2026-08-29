@@ -23,13 +23,24 @@ import jinja2
 from rich.console import Console
 from rich.markup import escape
 
+from datetime import datetime
+from importlib.metadata import PackageNotFoundError, version
+
 from gaslight.core.attacks.base import Finding
 from gaslight.core.blast import BlastZone, blast_geometry, blast_headline
+from gaslight.core.education import CLEAN_LINE, FIX_HINT
 from gaslight.core.metrics import MetricResult
-from gaslight.core.scorer import GradeResult
+from gaslight.core.scorer import GradeResult, severity_of
 from gaslight.core.secrets_scan import find_secret_like_strings, mask_secret
 from gaslight.core.surface import SurfaceFinding
 from gaslight.core.verdict import ToolVerdict
+
+
+def _gaslight_version() -> str:
+    try:
+        return version("gaslight")
+    except PackageNotFoundError:
+        return "dev"
 
 _GRADE_COLOR = {"A": "green", "B": "green", "C": "yellow", "D": "yellow", "F": "bold red"}
 _VERDICT_COLOR = {
@@ -247,6 +258,14 @@ _HTML_TEMPLATE = _jinja_env.from_string(
   .badge.leak { color:var(--breach); box-shadow:inset 0 0 0 1px var(--breach-dim); }
   .badge.clean { color:var(--held); box-shadow:inset 0 0 0 1px var(--held-dim); }
   .badge.untested { color:var(--canary); box-shadow:inset 0 0 0 1px var(--canary-dim); }
+  .badge.sev-critical { color:var(--breach); box-shadow:inset 0 0 0 1px var(--breach-dim); }
+  .badge.sev-high { color:#f5a623; box-shadow:inset 0 0 0 1px rgba(245,166,35,.42); }
+  .badge.sev-medium { color:var(--canary); box-shadow:inset 0 0 0 1px var(--canary-dim); }
+  .scan-meta { font-family:var(--mono); font-size:11px; color:var(--muted); margin:8px 0 0; letter-spacing:.3px; }
+  .cta { display:flex; gap:12px; align-items:flex-start; margin:18px 0 4px; padding:14px 16px; border-radius:8px; background:rgba(255,255,255,.02); box-shadow:inset 0 0 0 1px var(--line-lo); }
+  .cta-i { font-size:17px; line-height:1.25; }
+  .cta-t { font-weight:700; font-size:13px; margin-bottom:3px; }
+  .cta-b { color:var(--muted); font-size:13px; line-height:1.5; }
   .reason { color:var(--paper-2); font-size:13px; line-height:1.5; }
 
   .finding-head { padding:14px 18px; display:flex; align-items:center; gap:11px; border-bottom:1px solid var(--line-lo); flex-wrap:wrap; }
@@ -359,6 +378,12 @@ _HTML_TEMPLATE = _jinja_env.from_string(
       {% if metrics_avg is not none %}<div class="ov-avg"><div class="n">{{ metrics_avg }}<small>/100</small></div><div class="l">avg · {{ scored_count }} metrics</div></div>{% endif %}
     </div>
     {% if evidence %}<div class="evidence">Evidence on file — canary <b>{{ evidence.token }}</b> {{ evidence.text }}</div>{% endif %}
+    <div class="scan-meta">Scanned {{ scan_time }} · gaslight v{{ gaslight_version }}{% if checks_total %} · {{ checks_total }} checks across {{ scored_count }} dimensions, {{ grade.fired_count }} fired{% endif %}</div>
+    {% if grade.fired_count > 0 or (surface and surface|selectattr('severity','equalto','warn')|list) %}
+    <div class="cta"><span class="cta-i">🛠</span><div><div class="cta-t">What to do next</div><div class="cta-b">{{ fix_hint }}</div></div></div>
+    {% else %}
+    <div class="cta clean"><span class="cta-i">✓</span><div class="cta-b">{{ clean_line }}</div></div>
+    {% endif %}
 
     {% if blast %}
     <div class="sec-head"><h2>Blast radius</h2><span class="hint">how far damage actually travelled</span><span class="rule"></span></div>
@@ -419,7 +444,7 @@ _HTML_TEMPLATE = _jinja_env.from_string(
     <div class="sec-head"><h2>Confirmed exploits</h2><span class="hint">physically proven</span><span class="rule"></span></div>
     {% for c in confirmed %}
     <div class="finding fired">
-      <div class="finding-head"><span class="k">CONFIRMED</span><span class="on">{{ c.f.attack_key }}{% if c.tool %} on <code>{{ c.tool }}</code>{% endif %}</span></div>
+      <div class="finding-head"><span class="k">CONFIRMED</span><span class="badge sev-{{ c.severity }}">{{ c.severity|upper }}</span><span class="on">{{ c.f.attack_key }}{% if c.tool %} on <code>{{ c.tool }}</code>{% endif %}</span></div>
       <div class="finding-body">
         {% if c.chain %}
         <div class="chain">
@@ -553,7 +578,9 @@ def _confirmed_view(findings: list[Finding]) -> list[dict]:
         if not f.fired:
             continue
         tool = f.exfil_tool or f.destructive_tool or f.claim_tool
-        out.append({"f": f, "tool": tool, "chain": _build_chain(f)})
+        out.append({"f": f, "tool": tool, "chain": _build_chain(f), "severity": severity_of(f)})
+    # Show the worst first, like every scanner's findings list.
+    out.sort(key=lambda c: {"critical": 0, "high": 1, "medium": 2}.get(c["severity"], 3))
     return out
 
 
@@ -609,6 +636,10 @@ def render_html(
         checks_total=checks_total,
         card_verdict=card_verdict,
         card_verified=card_verified,
+        fix_hint=FIX_HINT,
+        clean_line=CLEAN_LINE,
+        scan_time=datetime.now().strftime("%Y-%m-%d %H:%M"),
+        gaslight_version=_gaslight_version(),
         circ=_CIRC,
         verdict_fired=_VERDICT_FIRED,
         verdict_untested=_VERDICT_UNTESTED,
