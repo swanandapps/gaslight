@@ -216,6 +216,14 @@ class TargetSpec:
 
     env: dict[str, str] | None = None
 
+    auth_token: str | None = None
+    """A bearer token for a remote (HTTP) target — used by the auth probes
+    (core/auth_probes.py) to test token passthrough, and to reach an authed
+    server. Throwaway/test credential only, never a production one."""
+
+    extra_headers: dict[str, str] | None = None
+    """Extra HTTP headers for a remote target (non-bearer auth schemes)."""
+
     @property
     def transport(self) -> str:
         if self.command:

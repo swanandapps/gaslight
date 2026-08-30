@@ -58,6 +58,7 @@ def _group_by_phase(attacks):
     return ordered
 from gaslight.core.reporter import print_climax, print_terminal, write_html_report
 from gaslight.core.surface import WARN, SurfaceFinding, scan_surface
+from gaslight.core.auth_probes import run_auth_probes
 from gaslight.core.baseline import diff_baseline, diff_scope_creep, load_baseline, write_baseline
 from gaslight.core.education import what_it_checks
 from gaslight.core.wizard import load_config, run_wizard, save_config
@@ -322,6 +323,23 @@ def build_parser() -> argparse.ArgumentParser:
             "stripped environment, which is the safe default."
         ),
     )
+    parser.add_argument(
+        "--auth-token",
+        default=None,
+        metavar="TOKEN",
+        help=(
+            "Bearer token for a remote (--url) target — reaches an authed server and lets the "
+            "auth probes test token passthrough. THROWAWAY/TEST token only, never production. "
+            "Also read from GASLIGHT_AUTH_TOKEN."
+        ),
+    )
+    parser.add_argument(
+        "--header",
+        action="append",
+        default=[],
+        metavar="KEY:VALUE",
+        help="Extra HTTP header for a remote target (repeatable) — e.g. a non-bearer auth scheme.",
+    )
     parser.add_argument("--max-turns", type=int, default=6)
     parser.add_argument(
         "--baseline",
@@ -399,6 +417,8 @@ def _report_json(
     metrics_avg=None,
     surface=None,
     llm=None,
+    auth=None,
+    auth_grade=None,
 ) -> str:
     """A machine-readable report for programmatic callers (the Tier 2 hunt
     driver, CI). Deliberately flat and stable: target, tool_count, grade, the
@@ -448,6 +468,14 @@ def _report_json(
         ]
     if llm is not None:
         payload["llm"] = llm
+    if auth is not None:
+        payload["auth"] = {
+            "grade": auth_grade.grade if auth_grade is not None else None,
+            "findings": [
+                {"probe": f.attack_key, "fired": f.fired, "reason": f.reason}
+                for f in auth
+            ],
+        }
     return json.dumps(payload, indent=2)
 
 
@@ -473,6 +501,33 @@ def _downgrade_if_backend_was_down(finding, target) -> None:
         f"({target.backend_failures} call(s) failed to connect or authenticate), so this "
         f"attack never actually reached a working tool. Previously recorded: {finding.reason}"
     )
+
+
+def _first_probe_tool(tools) -> str | None:
+    """A harmless, non-consequential tool name for the auth probe to replay
+    (empty-arg call, only to test whether auth is enforced). None → the probe
+    falls back to tools/list."""
+    from gaslight.core.schema import is_consequential
+
+    for tool in tools:
+        if not is_consequential(tool):
+            return tool.name
+    return None
+
+
+_AUTH_GRADE_COLOR = {"A": "green", "B": "green", "C": "yellow", "F": "bold red"}
+
+
+def _print_auth_section(console, findings, grade_result) -> None:
+    """A separate 'front door' verdict for a remote target — distinct from the
+    tool-behavior grade, because it tests a different layer (who's allowed to
+    call the tools, not what the tools do)."""
+    color = _AUTH_GRADE_COLOR.get(grade_result.grade, "white")
+    console.print()
+    console.print(f"[bold]🔐 Authorization (remote)[/]  —  grade [{color}]{grade_result.grade}[/]")
+    for f in findings:
+        mark = "[red]✗[/]" if f.fired else "[green]✓[/]"
+        console.print(f"   {mark} [dim]{f.attack_key}[/] — {f.reason}")
 
 
 def _build_attacks(safe: bool, skip: set[str] | None = None):
@@ -676,7 +731,16 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
 
     auto_from_wizard = False
     if args.url:
-        spec = TargetSpec(url=args.url)
+        headers = {}
+        for pair in getattr(args, "header", []) or []:
+            if ":" in pair:
+                k, v = pair.split(":", 1)
+                headers[k.strip()] = v.strip()
+        spec = TargetSpec(
+            url=args.url,
+            auth_token=args.auth_token or os.environ.get("GASLIGHT_AUTH_TOKEN"),
+            extra_headers=headers or None,
+        )
     elif args.command:
         spec = TargetSpec(command=args.command, env=env or None)
     else:
@@ -827,6 +891,21 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
             "[dim]  (--classify-secrets needs a model — skipped. Set a key or --llm ollama to enable it.)[/]"
         )
 
+    # Remote HTTP auth probes — the front-door layer the behavioral attacks can't
+    # reach (they ride the already-authenticated client). HTTP targets only; a
+    # local stdio server shares the process, so it has no network auth surface.
+    auth_findings: list = []
+    auth_grade = None
+    if spec.transport == "http":
+        try:
+            auth_findings = await run_auth_probes(
+                spec.url, _first_probe_tool(discovered_tools),
+                auth_token=spec.auth_token, extra_headers=spec.extra_headers,
+            )
+            auth_grade = grade(auth_findings)
+        except Exception as exc:  # noqa: BLE001 - a probe failure must never sink the report we have
+            console.print(f"[yellow]⚠  remote auth probes skipped[/] ([dim]{type(exc).__name__}[/])")
+
     verdicts = _compute_verdicts(findings)
 
     grade_result = grade(findings)
@@ -860,6 +939,9 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
         report_path=str(report_path),
     )
 
+    if spec.transport == "http" and auth_grade is not None:
+        _print_auth_section(console, auth_findings, auth_grade)
+
     if args.json:
         llm_info = {
             "active": llm_active,
@@ -867,7 +949,10 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
             "role": "enrichment" if llm_active else "off",
             "decides_verdict": False,
         }
-        print(_report_json(spec.label, tool_count, findings, grade_result, metrics, metrics_avg, surface, llm_info))
+        print(_report_json(
+            spec.label, tool_count, findings, grade_result, metrics, metrics_avg, surface, llm_info,
+            auth=auth_findings if spec.transport == "http" else None, auth_grade=auth_grade,
+        ))
 
     return 1 if grade_result.fired_count > 0 else 0
 

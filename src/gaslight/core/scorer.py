@@ -58,6 +58,15 @@ _DEFAULT_SEVERITY: dict[str, str] = {
     "error-disclosure": "medium",
     "resource-exposure": "medium",
     "claim-integrity": "medium",
+    # Remote HTTP auth probes (core/auth_probes.py) — an unauthenticated or
+    # forged-credential caller that gets served is critical; cleartext transport
+    # is high; token hygiene is medium.
+    "auth-no-credential": "critical",
+    "auth-token-not-validated": "critical",
+    "auth-session-as-auth": "critical",
+    "auth-token-passthrough": "critical",
+    "auth-transport": "high",
+    "auth-token-hygiene": "medium",
 }
 
 
