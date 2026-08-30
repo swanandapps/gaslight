@@ -5,9 +5,10 @@ just enough JSON-RPC (initialize / tools/list / tools/call) for a raw probe to
 exercise it, with a CONFIGURABLE auth policy so one fixture yields the matched
 weak/hardened pair:
 
-    policy="open"    — honors everything (no auth at all)            → probes fire
-    policy="strict"  — requires Bearer <VALID_TOKEN>, rejects no/bad → all pass (A)
-    policy="session" — accepts a bare Mcp-Session-Id with no bearer  → session probe fires
+    policy="open"       — honors everything (no auth at all)              → probes fire
+    policy="strict"     — requires Bearer <VALID_TOKEN>, rejects no/bad   → all pass (A)
+    policy="any_bearer" — requires *a* bearer but never validates it      → token-not-validated fires
+    policy="session"    — accepts a bare Mcp-Session-Id with no bearer     → session probe fires
 
 Responses are plain application/json (the spec also allows SSE; the raw client
 handles both, the mock keeps it simple).
@@ -27,6 +28,9 @@ def _token_ok(policy: str, auth_header: str, session_header: str) -> bool:
     """Whether this request is authorized under the mock's policy."""
     if policy == "open":
         return True
+    if policy == "any_bearer":
+        # Requires *a* bearer but never checks it — accepts any token (the vuln).
+        return auth_header.startswith("Bearer ")
     if policy == "session":
         # A bare session id (no bearer) is (wrongly) accepted — the vuln.
         return session_header == _SESSION_ID or auth_header == f"Bearer {VALID_TOKEN}"

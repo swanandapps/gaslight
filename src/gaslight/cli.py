@@ -526,7 +526,12 @@ def _print_auth_section(console, findings, grade_result) -> None:
     console.print()
     console.print(f"[bold]🔐 Authorization (remote)[/]  —  grade [{color}]{grade_result.grade}[/]")
     for f in findings:
-        mark = "[red]✗[/]" if f.fired else "[green]✓[/]"
+        if f.fired:
+            mark = "[red]✗[/]"
+        elif not f.attempted:
+            mark = "[dim]○[/]"  # not tested (needs a token / the OAuth server)
+        else:
+            mark = "[green]✓[/]"
         console.print(f"   {mark} [dim]{f.attack_key}[/] — {f.reason}")
 
 
