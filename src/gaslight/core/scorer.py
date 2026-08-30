@@ -1,21 +1,24 @@
 """Findings in, a Safety Grade out.
 
-The letter grade is tiered by the SEVERITY of the worst confirmed finding, not
-a flat "any fire is an F". The five gauges in core/metrics.py already model
-severity proportionally; the letter used to ignore that and collapse everything
-to F, so a filesystem path leaked in an error message graded the same as a
-secret physically exfiltrated to an attacker. It doesn't any more:
+The letter grade is tiered by the SEVERITY of the worst confirmed finding, on a
+plain A/B/C scale everyone reads at a glance — with F held back for the
+"fix it right now" cases. It is not a flat "any fire is an F": the five gauges in
+core/metrics.py already model severity proportionally, and the letter follows the
+worst finding rather than collapsing everything to F.
 
-  F — Critical: data left the boundary, or an unauthorised/irreversible action
-      went through (exfiltration, SSRF/egress, code execution, a destructive
-      call with no guard, a file tool walked out of its sandbox).
-  D — High: sensitive data was disclosed but did not leave to an attacker
+  F — Critical, fix immediately: a proven exploit — data left the boundary, or an
+      unauthorised/irreversible action went through (exfiltration, SSRF/egress,
+      code execution, a destructive call with no guard, a file tool walked out of
+      its sandbox).
+  C — Serious: sensitive data was disclosed but did not leave to an attacker
       (a confidential value in a reply, a real secret-format token in an error
       or resource, a secret surfaced during ordinary use).
-  C — Medium: internal information or an integrity gap (a path or stack trace
+  B — Minor: internal information or an integrity gap (a path or stack trace
       in an error, a sensitively-named ungated resource, a tool that breaks its
       own stated safety claim).
   A — nothing fired.
+
+(There is no D or E — the scale is deliberately A/B/C, then F for a real exploit.)
 
 Each attack has a default severity; the two attacks that can fire at different
 severities depending on what they found (error-disclosure, resource-exposure)
@@ -29,8 +32,9 @@ from dataclasses import dataclass
 
 from gaslight.core.attacks.base import Finding
 
-# Severity → letter, and rank for picking the worst.
-_SEVERITY_GRADE = {"critical": "F", "high": "D", "medium": "C"}
+# Severity → letter, and rank for picking the worst. Plain A/B/C, with F reserved
+# for a proven exploit (critical). No D/E — see the module docstring.
+_SEVERITY_GRADE = {"critical": "F", "high": "C", "medium": "B"}
 _SEVERITY_RANK = {"critical": 3, "high": 2, "medium": 1}
 
 # Each attack's default severity when a finding doesn't override it.

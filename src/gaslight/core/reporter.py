@@ -42,7 +42,8 @@ def _gaslight_version() -> str:
     except PackageNotFoundError:
         return "dev"
 
-_GRADE_COLOR = {"A": "green", "B": "green", "C": "yellow", "D": "yellow", "F": "bold red"}
+# A/B/C plain scale, F for a proven exploit (see core/scorer.py). No D.
+_GRADE_COLOR = {"A": "green", "B": "green", "C": "yellow", "F": "bold red"}
 _VERDICT_COLOR = {
     "GENUINELY DEFENDED": "green",
     "DEFENSE-IN-DEPTH WORKING": "green",
