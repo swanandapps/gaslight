@@ -20,3 +20,12 @@ logs/
 
 # scale-test clones/output
 harness/.scale-work*/
+
+# Internal, local-only material — never commit or publish (some hold secrets).
+# Belt-and-suspenders: these are already ignored via global excludes, but naming
+# them here keeps the intent explicit and survives fresh clones.
+council/
+docs/brain/
+harness/hunt*
+BRAIN_BRIDGE.md
+SYSTEM_DESIGN.md

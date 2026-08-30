@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gaslight"
-version = "0.2.3"
+version = "0.2.4"
 description = "Automated penetration testing for AI agents: point it at your agent, get a graded security report — and everything it confirms, it proves."
 readme = "README.md"
 license = "Apache-2.0"
@@ -29,6 +29,24 @@ gaslight = "gaslight.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gaslight"]
+
+# The sdist is an explicit WHITELIST, not a "everything minus ignores" set.
+# hatchling doesn't consult global gitignore / .git/info/exclude, so a blacklist
+# would silently ship local-only material (internal design docs, and harness/
+# hunt_results*.json which hold secrets). Listing only what should be public
+# makes leaking a secret impossible: anything not named here can never be built
+# into the distribution.
+[tool.hatch.build.targets.sdist]
+# Leading slashes anchor to the project root: an unanchored "README.md" would
+# match at ANY depth (e.g. harness/README.md), so root-anchor the metadata files
+# to keep the whitelist strict.
+include = [
+    "/src/gaslight",
+    "/README.md",
+    "/LICENSE",
+    "/CONTRIBUTING.md",
+    "/pyproject.toml",
+]
 
 [dependency-groups]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0"]
