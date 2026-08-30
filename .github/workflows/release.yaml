@@ -9,8 +9,8 @@ name: release
 #   pypi.org → your projects → gaslight → Manage → Publishing → Add a GitHub publisher
 #   Owner:            swanandapps
 #   Repository:       gaslight
-#   Workflow name:    release.yml
-#   Environment name: (leave BLANK — this workflow declares no environment)
+#   Workflow name:    release.yaml   (must match this file's name exactly)
+#   Environment name: (leave BLANK / "Any" — this workflow declares no environment)
 
 on:
   push:
