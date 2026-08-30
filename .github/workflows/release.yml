@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.1   # setup-uv ships no floating major tag; pin the full version
         with:
           python-version: "3.12"
           enable-cache: true
@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.1   # setup-uv ships no floating major tag; pin the full version
       - name: Build sdist + wheel
         run: uv build
       - name: Anti-leak gate — sdist must not contain internal/secret files
