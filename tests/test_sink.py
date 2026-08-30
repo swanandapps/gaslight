@@ -1,21 +1,26 @@
 import urllib.request
 
-from gaslight.core.sink import Sink, loopback_hosts
+from gaslight.core.sink import _LOOPBACK_ENCODINGS, Sink, loopback_hosts
+
+_BASE = ("127.0.0.1", "localhost") + _LOOPBACK_ENCODINGS
 
 
-def test_loopback_hosts_defaults_to_plain_loopback(monkeypatch):
+def test_loopback_hosts_defaults_to_plain_loopback_then_encodings(monkeypatch):
     monkeypatch.delenv("GASLIGHT_EXTRA_SINK_HOSTS", raising=False)
-    assert loopback_hosts() == ("127.0.0.1", "localhost")
+    hosts = loopback_hosts()
+    assert hosts == _BASE
+    assert hosts[0] == "127.0.0.1"  # common case stays first, fires fast
+    assert "2130706433" in hosts  # the encoded-bypass tier is present
 
 
 def test_loopback_hosts_appends_extra_hosts_from_env(monkeypatch):
     monkeypatch.setenv("GASLIGHT_EXTRA_SINK_HOSTS", "gaslight-proxy, other-host")
-    assert loopback_hosts() == ("127.0.0.1", "localhost", "gaslight-proxy", "other-host")
+    assert loopback_hosts() == _BASE + ("gaslight-proxy", "other-host")
 
 
 def test_loopback_hosts_ignores_blank_env_value(monkeypatch):
     monkeypatch.setenv("GASLIGHT_EXTRA_SINK_HOSTS", "")
-    assert loopback_hosts() == ("127.0.0.1", "localhost")
+    assert loopback_hosts() == _BASE
 
 
 def test_sink_captures_and_recognizes_token():

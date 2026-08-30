@@ -30,11 +30,28 @@ async def test_fires_against_unguarded_target():
 
 
 async def test_does_not_fire_against_guarded_target():
+    # guarded_fetch_server resolves the host and blocks any loopback/private IP,
+    # so it holds even against the encoded-loopback tier below.
     with Sink() as sink:
         async with TargetConnection(_spec("guarded_fetch_server.py")) as target:
             finding = await SsrfProbeAttack().run(target, ScriptedProvider(), sink)
 
     assert finding.fired is False
+
+
+async def test_fires_against_naive_string_denylist_via_host_encoding():
+    # A guard that blocks only the literal "127.0.0.1"/"localhost" strings is
+    # bypassed by an encoded loopback host (e.g. decimal 2130706433) that the OS
+    # resolver still sends to loopback. The sink physically receives it → confirmed.
+    with Sink() as sink:
+        async with TargetConnection(_spec("naively_guarded_fetch_server.py")) as target:
+            finding = await SsrfProbeAttack().run(target, ScriptedProvider(), sink)
+
+    assert finding.fired is True
+    assert "confirmed" in finding.reason
+    # the winning probe used a non-literal host, not the strings the guard blocks
+    assert "127.0.0.1" not in finding.reason
+    assert "localhost" not in finding.reason
 
 
 async def test_target_with_no_network_tool_declines_honestly():

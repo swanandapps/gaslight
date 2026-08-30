@@ -20,9 +20,22 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 
+# Encoded spellings of 127.0.0.1 that the OS resolver still sends to loopback
+# (empirically verified: urllib/getaddrinfo resolve all four to 127.0.0.1 on
+# macOS and Linux). A server that denylists the literal "127.0.0.1"/"localhost"
+# strings but hands the URL to an ordinary HTTP client is still reachable through
+# these — the classic SSRF-filter bypass. Deliberately omitted: octal (0177.0.0.1),
+# trailing-dot FQDN (127.0.0.1.), and IPv6 [::1] — the resolver or our IPv4-only
+# sink didn't accept them portably, and a payload that can never reach the sink
+# can never be *proven*, which this project forbids. ([::1] needs a dual-stack
+# sink first — a future change.)
+_LOOPBACK_ENCODINGS = ("2130706433", "0x7f000001", "127.1", "127.0.1")
+
+
 def loopback_hosts() -> tuple[str, ...]:
     """The host spellings a direct probe should try to reach gaslight's own
-    Sink. Defaults to plain loopback. `GASLIGHT_EXTRA_SINK_HOSTS`
+    Sink. Plain loopback first (the common case, fires fast), then the encoded
+    loopback forms above (the SSRF-filter-bypass tier). `GASLIGHT_EXTRA_SINK_HOSTS`
     (comma-separated) adds more — for when the target being probed runs in a
     network namespace where "127.0.0.1"/"localhost" resolve to the target's
     own container rather than the machine running this process (e.g. a
@@ -31,7 +44,7 @@ def loopback_hosts() -> tuple[str, ...]:
     env var per-case without reloading the module."""
     extra = os.environ.get("GASLIGHT_EXTRA_SINK_HOSTS", "")
     extra_hosts = tuple(h.strip() for h in extra.split(",") if h.strip())
-    return ("127.0.0.1", "localhost") + extra_hosts
+    return ("127.0.0.1", "localhost") + _LOOPBACK_ENCODINGS + extra_hosts
 
 
 @dataclass

@@ -9,10 +9,14 @@ anywhere.
 Two payload categories:
 1. Loopback trap (confirmed tier) — the tool is asked to fetch the exact
    local address gaslight's own sink is listening on, under the host
-   spellings core/sink.py's loopback_hosts() returns: plain loopback by
-   default ("127.0.0.1", "localhost"; other spellings like "0.0.0.0" or
-   "[::1]" are not portable enough across platforms to test deterministically
-   and are a known, accepted limitation, not solved here), plus whatever
+   spellings core/sink.py's loopback_hosts() returns: plain loopback
+   ("127.0.0.1", "localhost") first, then the ENCODED loopback forms
+   (decimal 2130706433, hex 0x7f000001, shorthand 127.1/127.0.1) that the OS
+   resolver still sends to 127.0.0.1 — these bypass a server that denylists
+   only the literal loopback strings, the most common SSRF-filter mistake.
+   (Octal, trailing-dot, and IPv6 "[::1]" are omitted — not portably
+   reachable / need a dual-stack sink — and an unreachable payload can't be
+   proven; see core/sink.py.) Plus whatever
    GASLIGHT_EXTRA_SINK_HOSTS adds — e.g. a Docker network alias, when the
    target runs in a network namespace where plain loopback resolves to the
    target's own container, not this process. Unlike
