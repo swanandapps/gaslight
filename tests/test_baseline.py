@@ -4,7 +4,13 @@ tests without a subprocess. See core/baseline.py and the CLI --baseline wiring.
 
 from mcp import types
 
-from gaslight.core.baseline import diff_baseline, load_baseline, snapshot_tools, write_baseline
+from gaslight.core.baseline import (
+    diff_baseline,
+    diff_scope_creep,
+    load_baseline,
+    snapshot_tools,
+    write_baseline,
+)
 
 
 def _tool(name, schema=None, *, description=None):
@@ -79,3 +85,62 @@ def test_written_baseline_is_stable_across_writes(tmp_path):
     write_baseline(p1, tools)
     write_baseline(p2, tools)
     assert p1.read_text() == p2.read_text()
+
+
+# --- MCP02 scope-creep (permission-surface growth) ---------------------------
+
+def _net_tool(name="fetch"):
+    # a url-shaped field with no constraint → network + unconstrained:url
+    return _tool(name, {"type": "object", "properties": {"url": {"type": "string", "format": "uri"}}})
+
+
+def _code_tool(name="run_command"):
+    return _tool(name, {"type": "object", "properties": {"command": {"type": "string"}}})
+
+
+def test_snapshot_records_capabilities_and_combos():
+    snap = snapshot_tools([_net_tool()])
+    caps = snap["tools"]["fetch"]["capabilities"]
+    assert "network" in caps
+    assert "unconstrained:url" in caps
+    assert "privilege_combos" in snap
+
+
+def test_scope_creep_unchanged_is_empty():
+    tools = [_net_tool(), _tool("list_users")]
+    assert diff_scope_creep(snapshot_tools(tools), tools) == []
+
+
+def test_scope_creep_flags_privilege_expansion():
+    # a plain tool gains a url field after approval → grows a network capability
+    before = snapshot_tools([_tool("process", {"type": "object", "properties": {"note": {"type": "string"}}})])
+    after = [_tool("process", {"type": "object", "properties": {"note": {"type": "string"}, "url": {"type": "string", "format": "uri"}}})]
+    drift = diff_scope_creep(before, after)
+    assert ("privilege-expanded", "process") in _kinds(drift)
+
+
+def test_scope_creep_flags_new_dangerous_tool():
+    before = snapshot_tools([_tool("list_users")])
+    drift = diff_scope_creep(before, [_tool("list_users"), _net_tool("fetch")])
+    assert ("dangerous-tool-added", "fetch") in _kinds(drift)
+
+
+def test_scope_creep_flags_new_privilege_combo():
+    code = _code_tool()
+    before = snapshot_tools([code])  # code alone — no combo
+    drift = diff_scope_creep(before, [code, _net_tool()])  # now code + network
+    assert "privilege-combo-added" in {d.kind for d in drift}
+
+
+def test_scope_creep_ignores_capability_shrinkage():
+    # a tool that LOSES its network field is hardening, never flagged
+    before = snapshot_tools([_net_tool("process")])
+    after = [_tool("process", {"type": "object", "properties": {"note": {"type": "string"}}})]
+    assert diff_scope_creep(before, after) == []
+
+
+def test_scope_creep_handles_pre_v2_baseline():
+    v1 = {"version": 1, "tools": {"fetch": {"description": "", "schema_hash": "abc123"}}}
+    drift = diff_scope_creep(v1, [_net_tool()])
+    assert len(drift) == 1
+    assert drift[0].kind == "scope-baseline-outdated"

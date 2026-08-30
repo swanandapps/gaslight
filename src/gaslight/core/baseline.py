@@ -27,7 +27,25 @@ from pathlib import Path
 
 from mcp import types
 
-_SCHEMA_VERSION = 1
+from gaslight.core.schema import (
+    find_all_destructive_tools,
+    find_code_execution_tool,
+    find_code_field,
+    find_file_read_tool,
+    find_network_tool,
+    find_path_field,
+    find_url_field,
+)
+
+# v2 added the per-tool "capabilities" + target "privilege_combos" fields used by
+# scope-creep detection. v1 baselines (rug-pull only) still diff fine — the extra
+# fields are additive and diff_baseline ignores them.
+_SCHEMA_VERSION = 2
+
+# Capabilities whose *appearance* is a privilege escalation worth flagging when a
+# NEW tool carries them (the "unconstrained:*" tags are growth signals too, but
+# only meaningful on a tool that already existed at baseline).
+_DANGEROUS_CAPS = ("file-read", "network", "code-exec", "destructive")
 
 
 def _canonical_schema(schema: object) -> str:
@@ -43,19 +61,56 @@ def _schema_hash(schema: object) -> str:
     return hashlib.sha256(_canonical_schema(schema).encode("utf-8")).hexdigest()[:16]
 
 
+def _tool_capabilities(tool: types.Tool) -> list[str]:
+    """The permission-relevant capabilities one tool exposes, derived from the
+    same shape detectors the attacks use, so a tool's recorded surface matches
+    what actually gets probed. Sorted for byte-stable snapshots."""
+    caps: set[str] = set()
+    one = [tool]
+    if find_file_read_tool(one)[0] is not None:
+        caps.add("file-read")
+    if find_network_tool(one)[0] is not None:
+        caps.add("network")
+    if find_code_execution_tool(one)[0] is not None:
+        caps.add("code-exec")
+    if find_all_destructive_tools(one):
+        caps.add("destructive")
+    props = (tool.input_schema or {}).get("properties") or {}
+    for kind, finder in (("path", find_path_field), ("url", find_url_field), ("code", find_code_field)):
+        field = finder(tool.input_schema)
+        if field is not None and not any(k in (props.get(field) or {}) for k in ("maxLength", "pattern", "enum")):
+            caps.add(f"unconstrained:{kind}")
+    return sorted(caps)
+
+
+def _privilege_combos_present(tools: list[types.Tool]) -> list[str]:
+    """Dangerous target-wide capability pairings — the same pairs surface.py
+    flags: code execution alongside network egress or file access."""
+    combos: list[str] = []
+    has_code = find_code_execution_tool(tools)[0] is not None
+    if has_code and find_network_tool(tools)[0] is not None:
+        combos.append("code-exec+network")
+    if has_code and find_file_read_tool(tools)[0] is not None:
+        combos.append("code-exec+file-read")
+    return sorted(combos)
+
+
 def snapshot_tools(tools: list[types.Tool]) -> dict:
-    """A serializable fingerprint of a target's tools — name, description and a
-    hash of the input schema — enough to detect any later mutation without
-    storing the whole schema."""
+    """A serializable fingerprint of a target's tools — name, description, a hash
+    of the input schema (rug-pull), and its permission-surface capabilities +
+    target-wide privilege combos (scope-creep) — enough to detect any later
+    mutation or privilege growth without storing the whole schema."""
     return {
         "version": _SCHEMA_VERSION,
         "tools": {
             tool.name: {
                 "description": tool.description or "",
                 "schema_hash": _schema_hash(tool.input_schema),
+                "capabilities": _tool_capabilities(tool),
             }
             for tool in tools
         },
+        "privilege_combos": _privilege_combos_present(tools),
     }
 
 
@@ -109,4 +164,62 @@ def diff_baseline(baseline: dict, tools: list[types.Tool]) -> list[BaselineDrift
                     f"{name!r} input schema changed since approval — new or altered parameters; review before trusting.",
                 )
             )
+    return drift
+
+
+def diff_scope_creep(baseline: dict, tools: list[types.Tool]) -> list[BaselineDrift]:
+    """Directional permission-surface diff (MCP02): flag only privilege GROWTH
+    since the approved baseline — a tool that gained a dangerous capability, a
+    newly-added privileged tool, or a new dangerous capability combination.
+    Capability *shrinkage* is hardening and is never flagged. Like rug-pull, this
+    is WARN-level and never touches the grade."""
+    approved = baseline.get("tools", {}) if isinstance(baseline, dict) else {}
+    if approved and not any("capabilities" in t for t in approved.values()):
+        # A pre-v2 baseline recorded no capabilities — there's nothing to diff
+        # against. Say so once instead of silently doing nothing or false-firing.
+        return [
+            BaselineDrift(
+                "scope-baseline-outdated",
+                "",
+                "baseline predates scope-creep tracking — re-record it with --baseline to enable "
+                "permission-surface drift detection.",
+            )
+        ]
+
+    current = snapshot_tools(tools)
+    current_tools = current["tools"]
+    drift: list[BaselineDrift] = []
+
+    for name in sorted(set(approved) & set(current_tools)):
+        gained = sorted(set(current_tools[name]["capabilities"]) - set(approved[name].get("capabilities", [])))
+        if gained:
+            drift.append(
+                BaselineDrift(
+                    "privilege-expanded",
+                    name,
+                    f"{name!r} gained {', '.join(gained)} since the baseline — a tool growing its "
+                    "permissions after approval; review before trusting.",
+                )
+            )
+    for name in sorted(set(current_tools) - set(approved)):
+        dangerous = sorted(set(current_tools[name]["capabilities"]) & set(_DANGEROUS_CAPS))
+        if dangerous:
+            drift.append(
+                BaselineDrift(
+                    "dangerous-tool-added",
+                    name,
+                    f"{name!r} is new since the baseline and carries {', '.join(dangerous)} — a new "
+                    "privileged tool not in the approved set.",
+                )
+            )
+    approved_combos = set(baseline.get("privilege_combos", []))
+    for combo in sorted(set(current["privilege_combos"]) - approved_combos):
+        drift.append(
+            BaselineDrift(
+                "privilege-combo-added",
+                "",
+                f"a new dangerous capability combination appeared since the baseline: {combo} — "
+                "review the tool(s) that introduced it.",
+            )
+        )
     return drift

@@ -58,7 +58,7 @@ def _group_by_phase(attacks):
     return ordered
 from gaslight.core.reporter import print_climax, print_terminal, write_html_report
 from gaslight.core.surface import WARN, SurfaceFinding, scan_surface
-from gaslight.core.baseline import diff_baseline, load_baseline, write_baseline
+from gaslight.core.baseline import diff_baseline, diff_scope_creep, load_baseline, write_baseline
 from gaslight.core.education import what_it_checks
 from gaslight.core.wizard import load_config, run_wizard, save_config
 
@@ -766,11 +766,17 @@ async def _run(args: argparse.Namespace, console: Console) -> int:
     if getattr(args, "baseline", None):
         baseline_path = Path(args.baseline)
         if baseline_path.exists():
-            drift = diff_baseline(load_baseline(baseline_path), discovered_tools)
-            surface.extend(SurfaceFinding(WARN, "baseline-drift", d.tool_name, d.message) for d in drift)
-            if drift:
+            approved = load_baseline(baseline_path)
+            drift = diff_baseline(approved, discovered_tools)
+            # Scope-creep (MCP02): privilege GROWTH since approval — same WARN
+            # discipline, never the grade. Reuses the same approved snapshot.
+            creep = diff_scope_creep(approved, discovered_tools)
+            surface.extend(SurfaceFinding(WARN, "baseline-drift", d.tool_name or None, d.message) for d in drift)
+            surface.extend(SurfaceFinding(WARN, "scope-creep", d.tool_name or None, d.message) for d in creep)
+            changes = len(drift) + len(creep)
+            if changes:
                 console.print(
-                    f"[yellow]⚠  {len(drift)} change(s) since the approved baseline[/] — "
+                    f"[yellow]⚠  {changes} change(s) since the approved baseline[/] — "
                     "see the report's Surface section."
                 )
             else:
