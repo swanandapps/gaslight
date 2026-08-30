@@ -1,0 +1,139 @@
+# Curated corpus of recognizable, registry-verified MCP servers for the gaslight hunt.
+# Assembled 2026-08-30. One start command per line; # comments. needs_creds noted in targets_100.json.
+
+npx -y @modelcontextprotocol/server-filesystem /tmp
+npx -y @modelcontextprotocol/server-memory
+npx -y @modelcontextprotocol/server-everything
+npx -y @modelcontextprotocol/server-sequential-thinking
+npx -y @modelcontextprotocol/server-github
+npx -y @modelcontextprotocol/server-gitlab
+npx -y @modelcontextprotocol/server-slack
+npx -y @modelcontextprotocol/server-google-maps
+npx -y @modelcontextprotocol/server-brave-search
+npx -y @modelcontextprotocol/server-postgres postgresql://localhost:5432/postgres
+npx -y @modelcontextprotocol/server-redis redis://localhost:6379
+npx -y @modelcontextprotocol/server-puppeteer
+npx -y @modelcontextprotocol/server-everart
+npx -y @modelcontextprotocol/server-gdrive
+npx -y @modelcontextprotocol/server-aws-kb-retrieval
+npx -y @stripe/mcp --tools=all
+npx -y @cloudflare/mcp-server-cloudflare
+npx -y mongodb-mcp-server
+npx -y @notionhq/notion-mcp-server
+npx -y firecrawl-mcp
+npx -y @browserbasehq/mcp
+npx -y @neondatabase/mcp-server-neon start
+npx -y @supabase/mcp-server-supabase
+npx -y @heroku/mcp-server
+npx -y @apify/actors-mcp-server
+npx -y exa-mcp-server
+npx -y tavily-mcp
+npx -y @elastic/mcp-server-elasticsearch
+npx -y @pinecone-database/mcp
+npx -y @sentry/mcp-server
+npx -y @paypal/mcp --tools=all
+npx -y @shopify/dev-mcp
+npx -y @twilio-alpha/mcp
+npx -y @azure/mcp server start
+npx -y @cloudinary/asset-management
+npx -y @perplexity-ai/mcp-server
+npx -y server-perplexity-ask
+npx -y @brave/brave-search-mcp-server
+npx -y @upstash/context7-mcp
+npx -y @upstash/mcp-server
+npx -y @e2b/mcp-server
+npx -y @bytebase/dbhub --transport stdio --dsn sqlite::memory:
+npx -y @turbot/steampipe-mcp
+npx -y @antv/mcp-server-chart
+npx -y @21st-dev/magic
+npx -y prisma mcp
+npx -y linear-mcp-server
+npx -y mcp-atlassian
+npx -y @raygun.io/mcp-server-raygun
+npx -y @gongrzhe/server-gmail-autoauth-mcp
+npx -y airtable-mcp-server
+npx -y figma-developer-mcp --stdio
+npx -y @executeautomation/playwright-mcp-server
+npx -y @automatalabs/mcp-server-playwright
+npx -y duckduckgo-mcp-server
+npx -y mcp-server-kubernetes
+npx -y obsidian-mcp /tmp
+npx -y wikipedia-mcp
+npx -y mcp-searxng
+npx -y mcp-shell
+npx -y mcp-server-sqlite-npx /tmp/test.db
+uvx mcp-server-qdrant
+uvx chroma-mcp
+uvx redis-mcp-server
+uvx elasticsearch-mcp-server
+uvx mcp-server-milvus
+uvx mcp-neo4j-cypher
+uvx mcp-clickhouse
+uvx mcp-server-motherduck --db-path :memory:
+uvx snowflake-labs-mcp
+uvx databricks-mcp-server
+uvx supabase-mcp-server
+uvx postgres-mcp --access-mode=restricted
+uvx --from mssql-mcp-server mssql_mcp_server
+uvx mongodb-mcp-server
+uvx mcp-server-bigquery
+uvx awslabs.core-mcp-server
+uvx awslabs.aws-documentation-mcp-server
+uvx awslabs.cost-explorer-mcp-server
+uvx awslabs.cdk-mcp-server
+uvx awslabs.aws-pricing-mcp-server
+uvx awslabs.dynamodb-mcp-server
+uvx awslabs.nova-canvas-mcp-server
+uvx mcp-atlassian
+uvx mcp-sentry
+uvx cognee-mcp
+uvx markitdown-mcp
+uvx notion-mcp
+uvx airtable-mcp
+uvx spotify-mcp
+uvx mcp-obsidian
+uvx mcp-perplexity
+uvx duckduckgo-mcp-server
+uvx wikipedia-mcp
+uvx mcp-shell-server
+uvx mcp-server-docker
+uvx --from terminal-controller terminal_controller
+uvx mcp-server-tree-sitter
+uvx excel-mcp-server stdio
+uvx arxiv-mcp-server
+uvx blender-mcp
+go run github.com/github/github-mcp-server/cmd/github-mcp-server@latest stdio
+go run github.com/grafana/mcp-grafana/cmd/mcp-grafana@latest
+go run github.com/containers/kubernetes-mcp-server/cmd/kubernetes-mcp-server@latest
+go run github.com/korotovsky/slack-mcp-server/cmd/slack-mcp-server@latest
+rust-mcp-filesystem /tmp
+hyper-mcp
+mcp-filesystem-server /tmp
+mcp-language-server
+npx -y @adpharm/mcp-server-filesystem-ro /tmp
+npx -y @wonderwhy-er/desktop-commander
+npx -y mcp-server-filesystem /tmp
+npx -y @cyanheads/filesystem-mcp-server
+npx -y d33naz-mcp-fetch
+uvx mcp-server-fetch
+npx -y @kazuph/mcp-fetch
+npx -y mcp-server-fetch-typescript
+npx -y @tokenizin/mcp-npx-fetch
+npx -y @agent-infra/mcp-server-browser
+npx -y @mindstone/mcp-server-browser-automation
+npx -y chrome-devtools-mcp
+npx -y @playwright/mcp
+npx -y puppeteer-mcp-server
+npx -y @redf0x1/mcp-server-filesystem
+npx -y mcp-server-commands
+npx -y mcp-shell-server
+uvx mcp-server-sqlite --db-path /tmp/hunt.db
+npx -y @executeautomation/database-server
+npx -y mcp-server-mysql
+npx -y @benborla29/mcp-server-mysql
+npx -y mcp-knowledge-graph
+npx -y @itseasy21/mcp-knowledge-graph
+uvx mcp-server-git
+npx -y @cyanheads/git-mcp-server
+npx -y mcp-server-time
+uvx mcp-server-time

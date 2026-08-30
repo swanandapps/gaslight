@@ -1,0 +1,1749 @@
+[
+  {
+    "name": "server-filesystem",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      "/tmp"
+    ],
+    "ecosystem": "node",
+    "category": "filesystem",
+    "vendor": "official",
+    "needs_creds": false,
+    "notes": "Official reference filesystem server; canonical most-installed example."
+  },
+  {
+    "name": "server-memory",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-memory"
+    ],
+    "ecosystem": "node",
+    "category": "memory",
+    "vendor": "official",
+    "needs_creds": false,
+    "notes": "Official knowledge-graph memory server."
+  },
+  {
+    "name": "server-everything",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-everything"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "official",
+    "needs_creds": false,
+    "notes": "Official test server exercising every MCP feature."
+  },
+  {
+    "name": "server-sequential-thinking",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-sequential-thinking"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "official",
+    "needs_creds": false,
+    "notes": "Official structured-reasoning server; extremely widely installed."
+  },
+  {
+    "name": "server-github",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-github"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official (archived TS) GitHub API server; needs GITHUB_PERSONAL_ACCESS_TOKEN."
+  },
+  {
+    "name": "server-gitlab",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-gitlab"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official GitLab API server; needs GITLAB_PERSONAL_ACCESS_TOKEN."
+  },
+  {
+    "name": "server-slack",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-slack"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official Slack server; needs SLACK_BOT_TOKEN."
+  },
+  {
+    "name": "server-google-maps",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-google-maps"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official Google Maps server; needs GOOGLE_MAPS_API_KEY."
+  },
+  {
+    "name": "server-brave-search",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-brave-search"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official Brave Search server; needs BRAVE_API_KEY."
+  },
+  {
+    "name": "server-postgres",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-postgres",
+      "postgresql://localhost:5432/postgres"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official read-only Postgres server; takes a connection-string arg."
+  },
+  {
+    "name": "server-redis",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-redis",
+      "redis://localhost:6379"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official Redis server; takes a redis-url arg."
+  },
+  {
+    "name": "server-puppeteer",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-puppeteer"
+    ],
+    "ecosystem": "node",
+    "category": "browser",
+    "vendor": "official",
+    "needs_creds": false,
+    "notes": "Official Puppeteer browser-automation server."
+  },
+  {
+    "name": "server-everart",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-everart"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official EverArt image-gen server; needs EVERART_API_KEY."
+  },
+  {
+    "name": "server-gdrive",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-gdrive"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official Google Drive server; needs OAuth credentials."
+  },
+  {
+    "name": "server-aws-kb-retrieval",
+    "command": [
+      "npx",
+      "-y",
+      "@modelcontextprotocol/server-aws-kb-retrieval"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "official",
+    "needs_creds": true,
+    "notes": "Official AWS Bedrock KB retrieval server; needs AWS creds."
+  },
+  {
+    "name": "stripe-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@stripe/mcp",
+      "--tools=all"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "stripe",
+    "needs_creds": true,
+    "notes": "Official Stripe payments MCP; needs STRIPE_SECRET_KEY."
+  },
+  {
+    "name": "cloudflare-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@cloudflare/mcp-server-cloudflare"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "cloudflare",
+    "needs_creds": true,
+    "notes": "Cloudflare npm MCP build (legacy); needs API token."
+  },
+  {
+    "name": "mongodb-mcp-server",
+    "command": [
+      "npx",
+      "-y",
+      "mongodb-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "mongodb",
+    "needs_creds": true,
+    "notes": "Official MongoDB server; needs a connection string / Atlas creds."
+  },
+  {
+    "name": "notion-mcp-server",
+    "command": [
+      "npx",
+      "-y",
+      "@notionhq/notion-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "notion",
+    "needs_creds": true,
+    "notes": "Official Notion API server; needs integration token."
+  },
+  {
+    "name": "firecrawl-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "firecrawl-mcp"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "firecrawl",
+    "needs_creds": true,
+    "notes": "Official Firecrawl scrape/crawl server; needs FIRECRAWL_API_KEY."
+  },
+  {
+    "name": "browserbase-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@browserbasehq/mcp"
+    ],
+    "ecosystem": "node",
+    "category": "browser",
+    "vendor": "browserbase",
+    "needs_creds": true,
+    "notes": "Official Browserbase + Stagehand cloud-browser server; needs API key."
+  },
+  {
+    "name": "neon-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@neondatabase/mcp-server-neon",
+      "start"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "neon",
+    "needs_creds": true,
+    "notes": "Official Neon Postgres server; 'start' + NEON_API_KEY."
+  },
+  {
+    "name": "supabase-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@supabase/mcp-server-supabase"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "supabase",
+    "needs_creds": true,
+    "notes": "Official Supabase server; needs SUPABASE_ACCESS_TOKEN."
+  },
+  {
+    "name": "heroku-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@heroku/mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "heroku",
+    "needs_creds": true,
+    "notes": "Official Heroku Platform server; needs HEROKU_API_KEY."
+  },
+  {
+    "name": "apify-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@apify/actors-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "automation",
+    "vendor": "apify",
+    "needs_creds": true,
+    "notes": "Official Apify Actors server; needs APIFY_TOKEN."
+  },
+  {
+    "name": "exa-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "exa-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "exa",
+    "needs_creds": true,
+    "notes": "Official Exa web-search/research server; needs EXA_API_KEY."
+  },
+  {
+    "name": "tavily-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "tavily-mcp"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "tavily",
+    "needs_creds": true,
+    "notes": "Official Tavily search server; needs TAVILY_API_KEY."
+  },
+  {
+    "name": "elastic-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@elastic/mcp-server-elasticsearch"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "elastic",
+    "needs_creds": true,
+    "notes": "Official Elasticsearch server; needs ES_URL + API key."
+  },
+  {
+    "name": "pinecone-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@pinecone-database/mcp"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "pinecone",
+    "needs_creds": true,
+    "notes": "Official Pinecone vector-DB server; needs PINECONE_API_KEY."
+  },
+  {
+    "name": "sentry-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@sentry/mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "sentry",
+    "needs_creds": true,
+    "notes": "Official Sentry error-monitoring server; needs access token."
+  },
+  {
+    "name": "paypal-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@paypal/mcp",
+      "--tools=all"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "paypal",
+    "needs_creds": true,
+    "notes": "Official PayPal server; needs PayPal access token."
+  },
+  {
+    "name": "shopify-dev-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@shopify/dev-mcp"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "shopify",
+    "needs_creds": false,
+    "notes": "Official Shopify dev-docs/schema server; no auth, runs standalone."
+  },
+  {
+    "name": "twilio-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@twilio-alpha/mcp"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "twilio",
+    "needs_creds": true,
+    "notes": "Official Twilio API server; needs account SID + API key."
+  },
+  {
+    "name": "azure-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@azure/mcp",
+      "server",
+      "start"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "microsoft",
+    "needs_creds": true,
+    "notes": "Official Microsoft Azure server; 'server start' + Azure auth."
+  },
+  {
+    "name": "cloudinary-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@cloudinary/asset-management"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "cloudinary",
+    "needs_creds": true,
+    "notes": "Official Cloudinary asset-management server; needs Cloudinary creds."
+  },
+  {
+    "name": "perplexity-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@perplexity-ai/mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "perplexity",
+    "needs_creds": true,
+    "notes": "Official Perplexity search/research server; needs PERPLEXITY_API_KEY."
+  },
+  {
+    "name": "perplexity-ask",
+    "command": [
+      "npx",
+      "-y",
+      "server-perplexity-ask"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "perplexity",
+    "needs_creds": true,
+    "notes": "Perplexity's widely-installed 'ask' reference server; needs PERPLEXITY_API_KEY."
+  },
+  {
+    "name": "brave-search-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@brave/brave-search-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "brave",
+    "needs_creds": true,
+    "notes": "Brave's own maintained Search server; needs BRAVE_API_KEY."
+  },
+  {
+    "name": "context7-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@upstash/context7-mcp"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "upstash",
+    "needs_creds": false,
+    "notes": "Context7 live-docs server by Upstash; hugely popular, no auth."
+  },
+  {
+    "name": "upstash-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@upstash/mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "upstash",
+    "needs_creds": true,
+    "notes": "Official Upstash Redis server; needs Upstash email + API key."
+  },
+  {
+    "name": "e2b-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@e2b/mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "shell",
+    "vendor": "e2b",
+    "needs_creds": true,
+    "notes": "Official E2B code-sandbox server; needs E2B_API_KEY."
+  },
+  {
+    "name": "dbhub-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@bytebase/dbhub",
+      "--transport",
+      "stdio",
+      "--dsn",
+      "sqlite::memory:"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "bytebase",
+    "needs_creds": false,
+    "notes": "Bytebase universal DB server; in-memory SQLite DSN, no creds."
+  },
+  {
+    "name": "steampipe-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@turbot/steampipe-mcp"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "turbot",
+    "needs_creds": false,
+    "notes": "Turbot Steampipe SQL-over-cloud server; local Steampipe install."
+  },
+  {
+    "name": "antv-chart-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@antv/mcp-server-chart"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "antv",
+    "needs_creds": false,
+    "notes": "AntV chart-generation server; popular, no creds."
+  },
+  {
+    "name": "magic-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@21st-dev/magic"
+    ],
+    "ecosystem": "node",
+    "category": "automation",
+    "vendor": "21st-dev",
+    "needs_creds": true,
+    "notes": "Magic / 21st UI-component generator; needs an API key."
+  },
+  {
+    "name": "prisma-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "prisma",
+      "mcp"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "prisma",
+    "needs_creds": false,
+    "notes": "Prisma ORM ships an MCP server via 'prisma mcp'; extremely recognizable."
+  },
+  {
+    "name": "linear-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "linear-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Widely-used Linear issue-tracker server; needs LINEAR_API_KEY."
+  },
+  {
+    "name": "atlassian-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-atlassian"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Popular Jira/Confluence server (npm); needs Atlassian API token."
+  },
+  {
+    "name": "raygun-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@raygun.io/mcp-server-raygun"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "raygun",
+    "needs_creds": true,
+    "notes": "Official Raygun crash-reporting server; needs Raygun token."
+  },
+  {
+    "name": "gmail-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@gongrzhe/server-gmail-autoauth-mcp"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Very popular Gmail server with auto OAuth; needs Google creds."
+  },
+  {
+    "name": "airtable-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "airtable-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Most-installed Airtable server (domdomegg); needs AIRTABLE_API_KEY."
+  },
+  {
+    "name": "figma-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "figma-developer-mcp",
+      "--stdio"
+    ],
+    "ecosystem": "node",
+    "category": "vendor-api",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Framelink Figma server, very high-star; needs --figma-api-key."
+  },
+  {
+    "name": "executeautomation-playwright",
+    "command": [
+      "npx",
+      "-y",
+      "@executeautomation/playwright-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "browser",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Popular ExecuteAutomation Playwright browser server."
+  },
+  {
+    "name": "automata-playwright",
+    "command": [
+      "npx",
+      "-y",
+      "@automatalabs/mcp-server-playwright"
+    ],
+    "ecosystem": "node",
+    "category": "browser",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Automata Labs Playwright browser-automation server."
+  },
+  {
+    "name": "duckduckgo-node",
+    "command": [
+      "npx",
+      "-y",
+      "duckduckgo-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "No-auth DuckDuckGo web-search server (node)."
+  },
+  {
+    "name": "kubernetes-mcp-node",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-server-kubernetes"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Popular Kubernetes/kubectl server; local kubeconfig."
+  },
+  {
+    "name": "obsidian-mcp-node",
+    "command": [
+      "npx",
+      "-y",
+      "obsidian-mcp",
+      "/tmp"
+    ],
+    "ecosystem": "node",
+    "category": "filesystem",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Local Obsidian-vault server; takes a vault path arg."
+  },
+  {
+    "name": "wikipedia-mcp-node",
+    "command": [
+      "npx",
+      "-y",
+      "wikipedia-mcp"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "No-auth Wikipedia lookup server (node)."
+  },
+  {
+    "name": "searxng-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-searxng"
+    ],
+    "ecosystem": "node",
+    "category": "search",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "SearXNG meta-search server; needs a SEARXNG_URL, no API key."
+  },
+  {
+    "name": "mcp-shell-node",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-shell"
+    ],
+    "ecosystem": "node",
+    "category": "shell",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Secure shell-command execution server (node)."
+  },
+  {
+    "name": "sqlite-npx",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-server-sqlite-npx",
+      "/tmp/test.db"
+    ],
+    "ecosystem": "node",
+    "category": "db",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "npx SQLite server (fills archived official sqlite slot); db-path arg."
+  },
+  {
+    "name": "mcp-server-qdrant",
+    "command": [
+      "uvx",
+      "mcp-server-qdrant"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "qdrant",
+    "needs_creds": true,
+    "notes": "Official Qdrant vector-DB memory server; set QDRANT_URL + COLLECTION_NAME env."
+  },
+  {
+    "name": "chroma-mcp",
+    "command": [
+      "uvx",
+      "chroma-mcp"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "chroma",
+    "needs_creds": false,
+    "notes": "Official Chroma vector-DB server; defaults to local/ephemeral, creds only for Chroma Cloud."
+  },
+  {
+    "name": "redis-mcp-server",
+    "command": [
+      "uvx",
+      "redis-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "redis",
+    "needs_creds": true,
+    "notes": "Official Redis MCP server; set REDIS_URL (or --url)."
+  },
+  {
+    "name": "elasticsearch-mcp-server",
+    "command": [
+      "uvx",
+      "elasticsearch-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "elastic",
+    "needs_creds": true,
+    "notes": "Elasticsearch/OpenSearch MCP server; needs ES host + auth."
+  },
+  {
+    "name": "mcp-server-milvus",
+    "command": [
+      "uvx",
+      "mcp-server-milvus"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "milvus",
+    "needs_creds": true,
+    "notes": "Official Milvus/Zilliz vector-DB server; requires --milvus-uri."
+  },
+  {
+    "name": "mcp-neo4j-cypher",
+    "command": [
+      "uvx",
+      "mcp-neo4j-cypher"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "neo4j",
+    "needs_creds": true,
+    "notes": "Official Neo4j graph-DB Cypher server; needs NEO4J_URI/USERNAME/PASSWORD."
+  },
+  {
+    "name": "mcp-clickhouse",
+    "command": [
+      "uvx",
+      "mcp-clickhouse"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "clickhouse",
+    "needs_creds": true,
+    "notes": "Official ClickHouse MCP server; set CLICKHOUSE_HOST/USER/PASSWORD."
+  },
+  {
+    "name": "mcp-server-motherduck",
+    "command": [
+      "uvx",
+      "mcp-server-motherduck",
+      "--db-path",
+      ":memory:"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "motherduck",
+    "needs_creds": false,
+    "notes": "Official DuckDB/MotherDuck server; local db path works standalone."
+  },
+  {
+    "name": "snowflake-labs-mcp",
+    "command": [
+      "uvx",
+      "snowflake-labs-mcp"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "snowflake",
+    "needs_creds": true,
+    "notes": "Official Snowflake Labs Cortex/SQL server; requires --service-config-file + creds."
+  },
+  {
+    "name": "databricks-mcp-server",
+    "command": [
+      "uvx",
+      "databricks-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "databricks",
+    "needs_creds": true,
+    "notes": "Databricks SQL/warehouse MCP server; needs DATABRICKS_HOST + token."
+  },
+  {
+    "name": "supabase-mcp-server",
+    "command": [
+      "uvx",
+      "supabase-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "supabase",
+    "needs_creds": true,
+    "notes": "Popular Supabase (Postgres) MCP server; needs access token/project ref."
+  },
+  {
+    "name": "postgres-mcp",
+    "command": [
+      "uvx",
+      "postgres-mcp",
+      "--access-mode=restricted"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Crystal DBA 'Postgres Pro' server; set DATABASE_URI env."
+  },
+  {
+    "name": "mssql-mcp-server",
+    "command": [
+      "uvx",
+      "--from",
+      "mssql-mcp-server",
+      "mssql_mcp_server"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Microsoft SQL Server MCP server; set MSSQL_* env."
+  },
+  {
+    "name": "mongodb-mcp-server-py",
+    "command": [
+      "uvx",
+      "mongodb-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Community Python MongoDB MCP server; needs a connection string."
+  },
+  {
+    "name": "mcp-server-bigquery",
+    "command": [
+      "uvx",
+      "mcp-server-bigquery"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Google BigQuery MCP server; requires --project + GCP creds."
+  },
+  {
+    "name": "awslabs.core-mcp-server",
+    "command": [
+      "uvx",
+      "awslabs.core-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "aws-labs",
+    "needs_creds": false,
+    "notes": "Official AWS Labs core/orchestrator server; no AWS creds."
+  },
+  {
+    "name": "awslabs.aws-documentation-mcp-server",
+    "command": [
+      "uvx",
+      "awslabs.aws-documentation-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "search",
+    "vendor": "aws-labs",
+    "needs_creds": false,
+    "notes": "Official AWS Labs documentation search; public docs, no creds."
+  },
+  {
+    "name": "awslabs.cost-explorer-mcp-server",
+    "command": [
+      "uvx",
+      "awslabs.cost-explorer-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "aws-labs",
+    "needs_creds": true,
+    "notes": "Official AWS Labs Cost Explorer; needs AWS credentials."
+  },
+  {
+    "name": "awslabs.cdk-mcp-server",
+    "command": [
+      "uvx",
+      "awslabs.cdk-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "aws-labs",
+    "needs_creds": false,
+    "notes": "Official AWS Labs CDK guidance; no creds."
+  },
+  {
+    "name": "awslabs.aws-pricing-mcp-server",
+    "command": [
+      "uvx",
+      "awslabs.aws-pricing-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "aws-labs",
+    "needs_creds": false,
+    "notes": "Official AWS Labs pricing; public API, no creds."
+  },
+  {
+    "name": "awslabs.dynamodb-mcp-server",
+    "command": [
+      "uvx",
+      "awslabs.dynamodb-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "db",
+    "vendor": "aws-labs",
+    "needs_creds": true,
+    "notes": "Official AWS Labs DynamoDB; needs AWS credentials."
+  },
+  {
+    "name": "awslabs.nova-canvas-mcp-server",
+    "command": [
+      "uvx",
+      "awslabs.nova-canvas-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "aws-labs",
+    "needs_creds": true,
+    "notes": "Official AWS Labs Nova Canvas image-gen; needs Bedrock creds."
+  },
+  {
+    "name": "mcp-atlassian-py",
+    "command": [
+      "uvx",
+      "mcp-atlassian"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Most-used Jira/Confluence server (sooperset); needs Atlassian URL + token."
+  },
+  {
+    "name": "mcp-sentry",
+    "command": [
+      "uvx",
+      "mcp-sentry"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "sentry",
+    "needs_creds": true,
+    "notes": "Sentry error-monitoring server (reference impl); requires --auth-token."
+  },
+  {
+    "name": "cognee-mcp",
+    "command": [
+      "uvx",
+      "cognee-mcp"
+    ],
+    "ecosystem": "python",
+    "category": "memory",
+    "vendor": "cognee",
+    "needs_creds": true,
+    "notes": "Official Cognee knowledge-graph memory server; needs an LLM API key."
+  },
+  {
+    "name": "markitdown-mcp",
+    "command": [
+      "uvx",
+      "markitdown-mcp"
+    ],
+    "ecosystem": "python",
+    "category": "other",
+    "vendor": "microsoft",
+    "needs_creds": false,
+    "notes": "Microsoft MarkItDown document-to-Markdown server; no creds."
+  },
+  {
+    "name": "notion-mcp-py",
+    "command": [
+      "uvx",
+      "notion-mcp"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Community Notion server; needs NOTION_API_KEY."
+  },
+  {
+    "name": "airtable-mcp-py",
+    "command": [
+      "uvx",
+      "airtable-mcp"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Airtable server; needs AIRTABLE_API_KEY."
+  },
+  {
+    "name": "spotify-mcp",
+    "command": [
+      "uvx",
+      "spotify-mcp"
+    ],
+    "ecosystem": "python",
+    "category": "vendor-api",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Popular Spotify control server; needs Spotify OAuth creds."
+  },
+  {
+    "name": "mcp-obsidian-py",
+    "command": [
+      "uvx",
+      "mcp-obsidian"
+    ],
+    "ecosystem": "python",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Popular Obsidian vault server; needs OBSIDIAN_API_KEY + REST plugin."
+  },
+  {
+    "name": "mcp-perplexity",
+    "command": [
+      "uvx",
+      "mcp-perplexity"
+    ],
+    "ecosystem": "python",
+    "category": "search",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Perplexity Sonar search server; needs PERPLEXITY_API_KEY."
+  },
+  {
+    "name": "duckduckgo-mcp-server-py",
+    "command": [
+      "uvx",
+      "duckduckgo-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "search",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Popular DuckDuckGo web-search server; no creds."
+  },
+  {
+    "name": "wikipedia-mcp-py",
+    "command": [
+      "uvx",
+      "wikipedia-mcp"
+    ],
+    "ecosystem": "python",
+    "category": "search",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Popular Wikipedia lookup server; no creds."
+  },
+  {
+    "name": "mcp-shell-server",
+    "command": [
+      "uvx",
+      "mcp-shell-server"
+    ],
+    "ecosystem": "python",
+    "category": "shell",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Widely-used shell-exec server; needs ALLOW_COMMANDS allow-list."
+  },
+  {
+    "name": "mcp-server-docker",
+    "command": [
+      "uvx",
+      "mcp-server-docker"
+    ],
+    "ecosystem": "python",
+    "category": "shell",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Popular Docker-management server; uses the local Docker socket."
+  },
+  {
+    "name": "terminal-controller",
+    "command": [
+      "uvx",
+      "--from",
+      "terminal-controller",
+      "terminal_controller"
+    ],
+    "ecosystem": "python",
+    "category": "shell",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Popular terminal/command server."
+  },
+  {
+    "name": "mcp-server-tree-sitter",
+    "command": [
+      "uvx",
+      "mcp-server-tree-sitter"
+    ],
+    "ecosystem": "python",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Wrale tree-sitter code-analysis server; no creds."
+  },
+  {
+    "name": "excel-mcp-server",
+    "command": [
+      "uvx",
+      "excel-mcp-server",
+      "stdio"
+    ],
+    "ecosystem": "python",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Popular Excel spreadsheet server; 'stdio' subcommand."
+  },
+  {
+    "name": "arxiv-mcp-server",
+    "command": [
+      "uvx",
+      "arxiv-mcp-server"
+    ],
+    "ecosystem": "python",
+    "category": "search",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Popular arXiv paper-search server; no creds."
+  },
+  {
+    "name": "blender-mcp",
+    "command": [
+      "uvx",
+      "blender-mcp"
+    ],
+    "ecosystem": "python",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "Viral Blender 3D-control server; connects to the Blender addon socket."
+  },
+  {
+    "name": "github-mcp-server",
+    "command": [
+      "go",
+      "run",
+      "github.com/github/github-mcp-server/cmd/github-mcp-server@latest",
+      "stdio"
+    ],
+    "ecosystem": "go",
+    "category": "vendor-api",
+    "vendor": "github",
+    "needs_creds": true,
+    "notes": "Official GitHub MCP server (Go); needs GITHUB_PERSONAL_ACCESS_TOKEN. Build step."
+  },
+  {
+    "name": "mcp-grafana",
+    "command": [
+      "go",
+      "run",
+      "github.com/grafana/mcp-grafana/cmd/mcp-grafana@latest"
+    ],
+    "ecosystem": "go",
+    "category": "vendor-api",
+    "vendor": "grafana",
+    "needs_creds": true,
+    "notes": "Official Grafana MCP server (Go); needs GRAFANA_URL + key. Build step."
+  },
+  {
+    "name": "kubernetes-mcp-server-go",
+    "command": [
+      "go",
+      "run",
+      "github.com/containers/kubernetes-mcp-server/cmd/kubernetes-mcp-server@latest"
+    ],
+    "ecosystem": "go",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "containers/manusa Kubernetes MCP server (Go); local kubeconfig. Build step."
+  },
+  {
+    "name": "slack-mcp-server-go",
+    "command": [
+      "go",
+      "run",
+      "github.com/korotovsky/slack-mcp-server/cmd/slack-mcp-server@latest"
+    ],
+    "ecosystem": "go",
+    "category": "vendor-api",
+    "vendor": "community",
+    "needs_creds": true,
+    "notes": "Most-starred Slack MCP server (Go); needs Slack tokens. Build step."
+  },
+  {
+    "name": "rust-mcp-filesystem",
+    "command": [
+      "rust-mcp-filesystem",
+      "/tmp"
+    ],
+    "ecosystem": "rust",
+    "category": "filesystem",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "rust-mcp-stack filesystem server (Rust); cargo install. Build step."
+  },
+  {
+    "name": "hyper-mcp",
+    "command": [
+      "hyper-mcp"
+    ],
+    "ecosystem": "rust",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "tuananh/hyper-mcp WASM-plugin server (Rust). Build step."
+  },
+  {
+    "name": "mcp-filesystem-server-go",
+    "command": [
+      "mcp-filesystem-server",
+      "/tmp"
+    ],
+    "ecosystem": "go",
+    "category": "filesystem",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "mark3labs Go filesystem server. Build step."
+  },
+  {
+    "name": "mcp-language-server",
+    "command": [
+      "mcp-language-server"
+    ],
+    "ecosystem": "go",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "isaacphi language-server MCP bridge (Go). Build step."
+  },
+  {
+    "name": "/tmp",
+    "command": [
+      "npx",
+      "-y",
+      "@adpharm/mcp-server-filesystem-ro",
+      "/tmp"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@wonderwhy-er/desktop-commander",
+    "command": [
+      "npx",
+      "-y",
+      "@wonderwhy-er/desktop-commander"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "/tmp",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-server-filesystem",
+      "/tmp"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@cyanheads/filesystem-mcp-server",
+    "command": [
+      "npx",
+      "-y",
+      "@cyanheads/filesystem-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "d33naz-mcp-fetch",
+    "command": [
+      "npx",
+      "-y",
+      "d33naz-mcp-fetch"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "mcp-server-fetch",
+    "command": [
+      "uvx",
+      "mcp-server-fetch"
+    ],
+    "ecosystem": "python",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@kazuph/mcp-fetch",
+    "command": [
+      "npx",
+      "-y",
+      "@kazuph/mcp-fetch"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "mcp-server-fetch-typescript",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-server-fetch-typescript"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@tokenizin/mcp-npx-fetch",
+    "command": [
+      "npx",
+      "-y",
+      "@tokenizin/mcp-npx-fetch"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@agent-infra/mcp-server-browser",
+    "command": [
+      "npx",
+      "-y",
+      "@agent-infra/mcp-server-browser"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@mindstone/mcp-server-browser-automation",
+    "command": [
+      "npx",
+      "-y",
+      "@mindstone/mcp-server-browser-automation"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "chrome-devtools-mcp",
+    "command": [
+      "npx",
+      "-y",
+      "chrome-devtools-mcp"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@playwright/mcp",
+    "command": [
+      "npx",
+      "-y",
+      "@playwright/mcp"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "puppeteer-mcp-server",
+    "command": [
+      "npx",
+      "-y",
+      "puppeteer-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@redf0x1/mcp-server-filesystem",
+    "command": [
+      "npx",
+      "-y",
+      "@redf0x1/mcp-server-filesystem"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "mcp-server-commands",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-server-commands"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "mcp-shell-server",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-shell-server"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "/tmp/hunt.db",
+    "command": [
+      "uvx",
+      "mcp-server-sqlite",
+      "--db-path",
+      "/tmp/hunt.db"
+    ],
+    "ecosystem": "python",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@executeautomation/database-server",
+    "command": [
+      "npx",
+      "-y",
+      "@executeautomation/database-server"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "mcp-server-mysql",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-server-mysql"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@benborla29/mcp-server-mysql",
+    "command": [
+      "npx",
+      "-y",
+      "@benborla29/mcp-server-mysql"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "mcp-knowledge-graph",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-knowledge-graph"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@itseasy21/mcp-knowledge-graph",
+    "command": [
+      "npx",
+      "-y",
+      "@itseasy21/mcp-knowledge-graph"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "mcp-server-git",
+    "command": [
+      "uvx",
+      "mcp-server-git"
+    ],
+    "ecosystem": "python",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "@cyanheads/git-mcp-server",
+    "command": [
+      "npx",
+      "-y",
+      "@cyanheads/git-mcp-server"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "mcp-server-time",
+    "command": [
+      "npx",
+      "-y",
+      "mcp-server-time"
+    ],
+    "ecosystem": "node",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  },
+  {
+    "name": "mcp-server-time",
+    "command": [
+      "uvx",
+      "mcp-server-time"
+    ],
+    "ecosystem": "python",
+    "category": "other",
+    "vendor": "community",
+    "needs_creds": false,
+    "notes": "from prior hunt corpus"
+  }
+]
