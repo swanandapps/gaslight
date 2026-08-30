@@ -1,0 +1,61 @@
+name: release
+
+# Publish gaslight to PyPI when a version tag is pushed (e.g. `git tag v0.2.5 && git push --tags`).
+# Uses PyPI Trusted Publishing (OIDC): GitHub proves this exact repo+workflow to
+# PyPI, which issues a short-lived, one-upload token. No API token is stored in
+# the repo or in GitHub secrets — nothing to leak or rotate.
+#
+# One-time setup on PyPI (gaslight already exists, so add it on the project):
+#   pypi.org → your projects → gaslight → Manage → Publishing → Add a GitHub publisher
+#   Owner:            swanandapps
+#   Repository:       gaslight
+#   Workflow name:    release.yml
+#   Environment name: (leave BLANK — this workflow declares no environment)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}        # allow a manual run from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Run tests
+        run: uv run pytest -q
+
+  publish:
+    name: build + publish to PyPI
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write          # REQUIRED: lets GitHub mint the OIDC token for Trusted Publishing
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+      - name: Build sdist + wheel
+        run: uv build
+      - name: Anti-leak gate — sdist must not contain internal/secret files
+        run: |
+          if tar tzf dist/*.tar.gz \
+            | grep -qE '/(council|docs/brain|hunt|harness)/|/(SYSTEM_DESIGN|BRAIN_BRIDGE|AGENTS)\.md'; then
+            echo "::error::sdist contains internal/secret files — fix [tool.hatch.build.targets.sdist] in pyproject.toml"
+            exit 1
+          fi
+          echo "sdist clean — package + metadata only"
+      - name: Publish to PyPI (Trusted Publishing — no token)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true   # re-running a tag won't fail if the version is already up
