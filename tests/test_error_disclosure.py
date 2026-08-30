@@ -33,6 +33,41 @@ async def test_fires_when_traceback_leaks_a_path():
     assert "path-shaped string" in finding.reason
 
 
+async def test_does_not_fire_when_error_only_reflects_injected_input():
+    # The server resolves our placeholder ('test-value') to an absolute path and
+    # echoes it in a FileNotFoundError. That path is OUR own input reflected back,
+    # not a disclosure — must not fire (Grok's "easy to oversell" case).
+    with Sink() as sink:
+        async with TargetConnection(_spec("reflected_path_error_server.py")) as target:
+            finding = await ErrorDisclosureAttack().run(target, ScriptedProvider(), sink)
+
+    assert finding.fired is False
+    assert finding.attempted is True
+
+
+def test_reflected_injected_path_is_not_a_leak():
+    from gaslight.core.attacks.error_disclosure import _find_leak
+
+    # the leaked path's final component is exactly the value we injected -> reflection
+    assert _find_leak("No such file: '/home/app/artifacts/test-value'", {"test-value"}) is None
+
+
+def test_a_genuine_path_beyond_injected_input_still_leaks():
+    from gaslight.core.attacks.error_disclosure import _find_leak
+
+    # a path we did NOT inject is still a real disclosure
+    leak = _find_leak("Failed to load /home/appuser/.aws/credentials", {"test-value"})
+    assert leak is not None and leak.kind == "path"
+
+
+def test_reflected_check_only_suppresses_the_exact_final_component():
+    from gaslight.core.attacks.error_disclosure import _find_leak
+
+    # our input appears, but the path reveals more than we sent (.db + /data dir) -> still fires
+    leak = _find_leak("cannot open /home/data/test-value.db", {"test-value"})
+    assert leak is not None and leak.kind == "path"
+
+
 async def test_does_not_fire_on_generic_error_message():
     with Sink() as sink:
         async with TargetConnection(_spec("generic_error_server.py")) as target:

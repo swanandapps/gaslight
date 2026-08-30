@@ -36,6 +36,11 @@ implementation at all):
 Guard against false positives the same way baseline-disclosure.py does:
 firing requires a real secret-scan hit, a genuine absolute-path signature, or
 a literal stack-trace marker — never "the error was long or unusual-looking."
+And a path leak that is only OUR OWN injected argument reflected back (the tool
+resolved our placeholder to an absolute path and echoed it in a FileNotFoundError)
+does NOT fire — that's the server describing the input we handed it, not
+disclosing something it chose to hide. Only a path revealing more than we sent
+counts (see _path_is_reflected_input).
 """
 
 from __future__ import annotations
@@ -72,7 +77,20 @@ class _Leak:
     kind: str  # "secret" | "path" | "stack-trace"
 
 
-def _find_leak(text: str) -> _Leak | None:
+def _path_is_reflected_input(path: str, injected: set[str]) -> bool:
+    """True when a leaked absolute path is just OUR OWN injected argument value
+    resolved to absolute — e.g. we sent record_id='test-value', the tool did
+    open(os.path.join(base, 'test-value')) and the FileNotFoundError echoed
+    '/home/app/artifacts/test-value'. A server reflecting the input you handed it
+    in an error is not disclosing anything it chose to keep secret, so it must not
+    count. The check is tight — only the path's FINAL component matching what we
+    sent — so a path that reveals more than our input (a different basename, a
+    deeper directory, an added extension) still fires as a genuine leak."""
+    tail = path.rstrip("/").rsplit("/", 1)[-1]
+    return any(val and (tail == val or path.endswith("/" + val)) for val in injected)
+
+
+def _find_leak(text: str, injected: set[str] | None = None) -> _Leak | None:
     if not text:
         return None
     # Only a RECOGNISABLE secret format confirms a finding here — never an
@@ -85,9 +103,14 @@ def _find_leak(text: str) -> _Leak | None:
     secrets = find_high_confidence_secrets(text)
     if secrets:
         return _Leak(secrets[0], "secret")
+    injected = injected or set()
     for pattern in _ABS_PATH_PATTERNS:
-        m = pattern.search(text)
-        if m:
+        for m in pattern.finditer(text):
+            # Skip a path that is only our own injected value reflected back —
+            # but keep scanning: a genuine path elsewhere in the same error
+            # (a config/home/source path we did NOT send) still fires.
+            if _path_is_reflected_input(m.group(0), injected):
+                continue
             return _Leak(m.group(0), "path")
     for marker in _STACK_TRACE_MARKERS:
         if marker in text:
@@ -210,7 +233,11 @@ class ErrorDisclosureAttack(AttackModule):
                     continue
                 raw_observed.append(text)
 
-                leak = _find_leak(text)
+                # The string values we injected this call — a path leak that is
+                # only one of these reflected back isn't a disclosure (see
+                # _path_is_reflected_input); a genuine leak still fires.
+                injected = {str(v) for v in args.values()}
+                leak = _find_leak(text, injected)
                 if leak is None:
                     continue
                 preview = text if not self._safe else redact_and_truncate(text, _PREVIEW_LENGTH)
