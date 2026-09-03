@@ -106,7 +106,18 @@ async def _probe_no_auth_call(client: httpx.AsyncClient, url: str, read_tool: st
         "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "gaslight", "version": "0"},
     })
     if not _honored(init):
-        return _finding(key, False, "unauthenticated requests are rejected — the server requires a credential.")
+        if init.status_code in (401, 403):
+            return _finding(key, False, "unauthenticated requests are rejected — the server requires a credential.")
+        # Not a 401/403 — the MCP handshake itself never completed (e.g. an SSE
+        # endpoint that needs the GET /sse + POST /messages flow these probes
+        # don't speak). Report honestly rather than mistaking a transport failure
+        # for an enforced credential (which would mask a genuinely open server).
+        return _finding(
+            key, False,
+            "could not complete an MCP handshake over this transport — auth not assessed "
+            "(these probes speak Streamable HTTP, not the older HTTP+SSE).",
+            attempted=False,
+        )
     session = init.headers.get("mcp-session-id") or init.headers.get("Mcp-Session-Id")
     if read_tool:
         resp = await _rpc(client, url, "tools/call", session=session,
