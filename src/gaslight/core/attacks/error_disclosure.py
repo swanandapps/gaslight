@@ -248,6 +248,10 @@ class ErrorDisclosureAttack(AttackModule):
                     # A real secret in an error is High; a leaked path or stack
                     # trace is internal-info disclosure — real, but Medium.
                     severity="high" if leak.kind == "secret" else "medium",
+                    # A leaked secret is a genuine disclosure (violation, sets the
+                    # grade); a leaked path/stack trace is a minor hygiene gap
+                    # (caps at B, flagged verify) — not a boundary breach.
+                    disposition="violation" if leak.kind == "secret" else "hygiene",
                     reason=(
                         f"{tool.name} — a {label} call leaked a {leak.kind}-shaped string "
                         f"({headline!r}) in its error text — response: {preview!r}"

@@ -1,6 +1,21 @@
-"""Findings in, a Safety Grade out.
+"""Findings in, two axes out — a Security Grade and an Exposure rating.
 
-The letter grade is tiered by the SEVERITY of the worst confirmed finding, on a
+TWO AXES (the key distinction this module enforces):
+  * Security Grade (A/B/C/F) — is anything actually BROKEN? Counts only
+    VIOLATION findings (a boundary the server, or an industry standard, is
+    expected to enforce was crossed). By-design power never touches the letter.
+  * Exposure (low/medium/high/critical) — how much power does the server hand an
+    agent BY DESIGN? Computed from CAPABILITY findings (a shell that runs any
+    command, a file tool with no allowlist, an unguarded destructive tool). It is
+    informational — never a letter-grade hit. A clean shell server is Grade A /
+    Exposure CRITICAL: no bug, enormous blast radius.
+Findings carry `disposition` ("violation" | "capability" | "hygiene", see
+attacks/base.py); this module routes each to the right axis. HYGIENE (a minor
+info leak like a path in an error, or a heuristic-only hit) caps the Grade at B,
+and a best-effort (unconfirmed) violation caps it at C — a heuristic never drives
+an F on its own.
+
+The letter grade is tiered by the SEVERITY of the worst confirmed VIOLATION, on a
 plain A/B/C scale everyone reads at a glance — with F held back for the
 "fix it right now" cases. It is not a flat "any fire is an F": the five gauges in
 core/metrics.py already model severity proportionally, and the letter follows the
@@ -36,6 +51,20 @@ from gaslight.core.attacks.base import Finding
 # for a proven exploit (critical). No D/E — see the module docstring.
 _SEVERITY_GRADE = {"critical": "F", "high": "C", "medium": "B"}
 _SEVERITY_RANK = {"critical": 3, "high": 2, "medium": 1}
+
+# Two-axis grading (see module docstring). The Security Grade below counts
+# VIOLATIONS only; CAPABILITY findings feed a separate, informational Exposure
+# rating (a shell server with no bug is Grade A / Exposure CRITICAL).
+_LETTER_RANK = {"A": 0, "B": 1, "C": 2, "F": 3}
+_EXPOSURE_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+# Blast radius a capability finding hands an agent by design — not whether the
+# server is broken. Unmapped capability findings fall back to "medium".
+_CAPABILITY_EXPOSURE: dict[str, str] = {
+    "code-execution-probe": "critical",
+    "destructive-authz-probe": "high",
+    "path-traversal": "high",
+    "ssrf-probe": "high",
+}
 
 # Each attack's default severity when a finding doesn't override it.
 _DEFAULT_SEVERITY: dict[str, str] = {
@@ -86,9 +115,46 @@ class GradeResult:
     summary: str
 
 
+@dataclass
+class ExposureResult:
+    """The informational second axis: how much power the server hands an agent by
+    design (its CAPABILITY findings), independent of whether anything is broken."""
+    rating: str  # "low" | "medium" | "high" | "critical"
+    drivers: list[str]  # short labels for what drove it, worst first
+
+
+def _violation_letter(f: Finding) -> str:
+    """The letter a single violation contributes — its severity mapped to a
+    letter, except a best-effort (unconfirmed) exploit can never be an F on its
+    own; it caps at C until a confirmed run backs it."""
+    letter = _SEVERITY_GRADE.get(severity_of(f), "C")
+    if letter == "F" and f.confidence == "best-effort":
+        return "C"
+    return letter
+
+
+def exposure(findings: list[Finding]) -> ExposureResult:
+    """Rate the by-design blast radius from the CAPABILITY findings — never a
+    letter-grade hit, just a rating a deployer reads to decide isolation."""
+    caps = [f for f in findings if f.fired and f.disposition == "capability"]
+    if not caps:
+        return ExposureResult(rating="low", drivers=[])
+    ranked = sorted(
+        caps,
+        key=lambda f: _EXPOSURE_RANK[_CAPABILITY_EXPOSURE.get(f.attack_key, "medium")],
+        reverse=True,
+    )
+    worst = _CAPABILITY_EXPOSURE.get(ranked[0].attack_key, "medium")
+    drivers = [f.attack_key for f in ranked]
+    return ExposureResult(rating=worst, drivers=drivers)
+
+
 def grade(findings: list[Finding]) -> GradeResult:
     fired = [f for f in findings if f.fired]
-    if not fired:
+    # Security Grade counts only findings that affect it: violations set the
+    # letter; hygiene caps at B; capability findings are Exposure, never a letter.
+    graded = [f for f in fired if f.disposition in ("violation", "hygiene")]
+    if not graded:
         # A clean result means nothing unless something was actually tested.
         # Say how much was, so an "A" earned against zero reachable tools can
         # never read as a clean bill of health — the same honesty the report's
@@ -113,12 +179,19 @@ def grade(findings: list[Finding]) -> GradeResult:
             total_count=len(findings),
             summary=summary,
         )
-    worst_severity = max((severity_of(f) for f in fired), key=lambda s: _SEVERITY_RANK[s])
+    letters = ["B" if f.disposition == "hygiene" else _violation_letter(f) for f in graded]
+    worst_letter = max(letters, key=lambda letter: _LETTER_RANK[letter])
+    violations = [f for f in graded if f.disposition == "violation"]
+    detail = (
+        _fired_detail(violations)
+        if violations
+        else "a minor hygiene issue (an info leak or a heuristic hit) — verify before acting."
+    )
     return GradeResult(
-        grade=_SEVERITY_GRADE[worst_severity],
-        fired_count=len(fired),
+        grade=worst_letter,
+        fired_count=len(graded),
         total_count=len(findings),
-        summary=f"{len(fired)} confirmed finding(s) — {_fired_detail(fired)}",
+        summary=f"{len(graded)} confirmed finding(s) — {detail}",
     )
 
 

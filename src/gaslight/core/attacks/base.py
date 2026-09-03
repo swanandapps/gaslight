@@ -98,6 +98,25 @@ class Finding:
     "medium". Only meaningful when fired=True; the scorer maps the worst
     severity across all fired findings to the letter grade."""
 
+    disposition: str = "violation"
+    """What KIND of finding this is — the axis that separates a real defect from
+    by-design power (see core/scorer.py's two-axis grading):
+      "violation"  — a boundary the server (or an industry standard) is expected
+                     to enforce was crossed: a bypassed refusal, a reserved/internal
+                     address reached, a broken safety claim. Feeds the Security Grade.
+      "capability" — by-design power with no boundary in that category to cross
+                     (arbitrary command exec, unrestricted file read, an unguarded
+                     destructive tool whose purpose is to delete). Feeds Exposure,
+                     never the letter grade on its own.
+      "hygiene"    — a minor info leak or heuristic-only hit; caps the grade at B.
+    Defaults to "violation" so an attack that hasn't opted in still grades as before."""
+
+    confidence: str = "confirmed"
+    """"confirmed" (a canary physically reached a sink / a marker signature was
+    seen) or "best-effort" (a well-known-file signature, a heuristic match). Only
+    meaningful when fired=True. A best-effort violation caps the letter at C — a
+    heuristic hit should never drive an F on its own."""
+
 
 class AttackModule(ABC):
     key: str

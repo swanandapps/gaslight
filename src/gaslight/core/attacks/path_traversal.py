@@ -89,6 +89,7 @@ class _Hit:
 
     reason: str
     confirmed: bool  # True for a marker (confirmed) hit, False for best-effort
+    preview: str = ""  # the (safe-masked) response body, for composing branch-specific reasons
 
 
 def _dotdot_payloads() -> list[tuple[str, bool, str | None]]:
@@ -188,10 +189,43 @@ class PathTraversalAttack(AttackModule):
         ]
         hits = [h for h in (dotdot_hit, absolute_hit, encoded_hit) if h is not None]
         if hits:
-            # Headline the strongest evidence: a confirmed (marker) hit over a
-            # best-effort one.
-            hits.sort(key=lambda h: not h.confirmed)
-            return Finding(attack_key=self.key, fired=True, reason=hits[0].reason, checks=checks)
+            if absolute_hit is not None:
+                # A plain absolute out-of-scope path was read — there is no
+                # confinement to escape. That is unrestricted filesystem access by
+                # design (the "no allowlist configured" shape, e.g. a file tool
+                # left at full-filesystem default), NOT a traversal bug. It feeds
+                # Exposure, not the Security Grade — the boundary-check that keeps
+                # us from calling a boundaryless tool "breached." A ../ hit
+                # alongside it only confirms the same no-boundary state.
+                # Absolute access proves there's no boundary → capability; but
+                # headline the strongest evidence across all hits (a confirmed
+                # marker over a best-effort well-known-file signature).
+                evidence = sorted(hits, key=lambda h: not h.confirmed)[0]
+                conf_word = "confirmed" if evidence.confirmed else "best-effort"
+                return Finding(
+                    attack_key=self.key,
+                    fired=True,
+                    reason=(
+                        f"{read_tool.name} read an out-of-scope absolute path with no restriction "
+                        f"({conf_word}) — unrestricted filesystem access by design, no boundary to "
+                        f"bypass — response: {evidence.preview!r}"
+                    ),
+                    checks=checks,
+                    disposition="capability",
+                    confidence="confirmed" if evidence.confirmed else "best-effort",
+                )
+            # Absolute access was refused but a relative "../" or encoded payload
+            # got through: a real boundary exists and was bypassed → VIOLATION.
+            bypass = [h for h in (dotdot_hit, encoded_hit) if h is not None]
+            bypass.sort(key=lambda h: not h.confirmed)
+            return Finding(
+                attack_key=self.key,
+                fired=True,
+                reason=bypass[0].reason,
+                checks=checks,
+                disposition="violation",
+                confidence="confirmed" if bypass[0].confirmed else "best-effort",
+            )
 
         return Finding(
             attack_key=self.key,
@@ -233,5 +267,5 @@ class PathTraversalAttack(AttackModule):
                 f"{read_tool.name} escaped its intended directory via "
                 f"{path_field}={payload!r} ({qualifier}) — response: {preview!r}"
             )
-            return _Hit(reason=reason, confirmed=is_marker)
+            return _Hit(reason=reason, confirmed=is_marker, preview=preview)
         return None

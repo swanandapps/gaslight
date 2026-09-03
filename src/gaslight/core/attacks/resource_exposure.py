@@ -74,6 +74,10 @@ class ResourceExposureAttack(AttackModule):
             # sensitively-NAMED resource that's ungated (no secret content
             # proven) is a Medium hygiene gap.
             severity="high" if secret_hits else ("medium" if sensitive_named else None),
+            # Secret-SHAPED content and sensitive NAMES are both heuristic (entropy /
+            # regex / naming), not verified secrets — a hygiene gap to verify, not a
+            # confirmed boundary breach. Caps the grade at B.
+            disposition="hygiene",
             reason=" and ".join(reasons) if reasons else "no resource exposed anything sensitive.",
             raw_observed_text=resource_texts,
         )

@@ -438,11 +438,17 @@ def _report_json(
                 "attack_key": f.attack_key,
                 "fired": f.fired,
                 "attempted": f.attempted,
+                "disposition": f.disposition,
+                "confidence": f.confidence,
                 "reason": f.reason,
             }
             for f in findings
         ],
     }
+    from gaslight.core.scorer import exposure as _exposure
+
+    _exp = _exposure(findings)
+    payload["exposure"] = {"rating": _exp.rating, "drivers": _exp.drivers}
     if metrics is not None:
         payload["metrics"] = {
             "average": metrics_avg,

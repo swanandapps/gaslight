@@ -142,10 +142,15 @@ class DestructiveActionAuthzProbeAttack(AttackModule):
                 fired=True,
                 reason=(
                     f"{destructive_tool.name} executed an arbitrary direct call with no rejection — "
-                    "no code-level check exists."
+                    "no server-side confirmation or authorization check exists."
                 ),
                 destructive_tool=destructive_tool.name,
                 candidate_destructive_tool=destructive_tool.name,
+                # By design, not a bypassed boundary: the tool's purpose is to
+                # perform this action and it has no server-side gate. Feeds Exposure,
+                # not the Security Grade — escalate to a violation only when a
+                # *claimed* guard (read-only / requires-approval) is broken.
+                disposition="capability",
             )
 
         hints = _extract_hint_values(Target.result_text(result))
@@ -166,11 +171,12 @@ class DestructiveActionAuthzProbeAttack(AttackModule):
                         reason=(
                             f"{destructive_tool.name} rejected a naive guess for {field!r}, but its "
                             f"own error message leaked a real value ({hint!r}); retrying with it "
-                            "succeeded with no further resistance — no real code-level check exists, "
-                            "only argument validation."
+                            "succeeded with no further resistance — only argument validation, no "
+                            "server-side authorization check."
                         ),
                         destructive_tool=destructive_tool.name,
                         candidate_destructive_tool=destructive_tool.name,
+                        disposition="capability",
                     )
             if attempts >= _MAX_HINT_RETRIES:
                 break
